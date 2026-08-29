@@ -61,3 +61,25 @@
 - [x] Add focused relationship tests for goal edits/completion, activity history, and voice-note append behavior via existing helper and persistence coverage
 - [x] Extract relationship goal/activity state helpers and add focused tests for add/edit/toggle/delete and activity updates
 - [x] Add relationship snapshot coverage proving goals and activity history survive validation
+- [x] Activate the Ask your AI life coach request flow with visible responses and errors
+- [x] Keep the sidebar fixed while the main content scrolls
+- [x] Make notification rows clickable and route each to its relevant page or subpage
+- [x] Expand relationship type choices to include family, friends, classmates, partners, ex-partners, colleagues, and other common relationships
+- [x] Make each person row and name click toggle its detail section open and closed
+- [x] Add reusable AI Ideas buttons to applicable dashboard sections
+- [x] Add Masters-focused AI guidance for applications, preparation, and deadlines
+- [x] Add source-aware current deadline retrieval or clearly labeled source context for Masters guidance — current prompt explicitly requires official-site verification and does not invent deadlines
+- [x] Add tests, responsive verification, and a new project checkpoint
+- [x] Add focused protection tests for the new Ideas and life-coach endpoints
+- [x] Route every notification row to a correct page and subpage, including work and relationships
+- [x] Make the full relationship person header row clickable while keeping action buttons independent
+- [x] Add Ideas controls to the remaining applicable section cards and page headers
+- [x] Show visible official-source verification context for Masters deadline guidance
+- [x] Save a new checkpoint after the latest dashboard upgrades
+- [x] Route relationship notifications to Friends and work notifications to the relevant project context
+- [x] Add Ideas controls to remaining applicable health, work, school, and relationship sections or explicitly label exclusions
+- [x] Save and confirm a fresh checkpoint after all latest upgrades
+- [x] Pass project-specific context from work notification rows into notification navigation
+- [x] Add Ideas actions to health weight goal and weight trend sections
+- [x] Save a fresh checkpoint after the latest fixes and confirm its version
+- [ ] Confirm the fresh checkpoint version after the latest notification-routing and weight-Ideas fixes

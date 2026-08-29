@@ -39,6 +39,12 @@ describe("dashboard persistence", () => {
     expect(mockDb.update).toHaveBeenCalled();
   });
 
+  it("protects Ideas and life-coach procedures from unauthenticated access", async () => {
+    const caller = appRouter.createCaller(context(null));
+    await expect(caller.advice.ideas({ section: "Masters applications", context: "" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(caller.advice.coach({ message: "What should I focus on?", context: "" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+
   it("supports relationship goal editing and activity history", () => {
     const person = { goals: [{ id: 1, text: "Call weekly", done: false }], activity: [] };
     const added = addRelationshipGoal(person, { id: 2, text: "Plan a visit", done: false }, { id: 3, date: "2026-08-29", type: "Goal", text: "Added goal" });

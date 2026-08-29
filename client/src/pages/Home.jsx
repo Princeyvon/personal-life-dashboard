@@ -114,6 +114,10 @@ function SectionCard({ title, right, children }) {
   );
 }
 
+function IdeaButton({ onClick, loading = false }) {
+  return <button type="button" onClick={onClick} disabled={loading} className="inline-flex items-center gap-1 rounded-lg bg-neutral-100 px-2.5 py-1.5 text-[11px] font-medium text-neutral-600 transition-transform duration-150 active:scale-[0.97] disabled:opacity-50"><Sparkles size={12} />{loading ? "Thinking…" : "Ideas"}</button>;
+}
+
 function ViewTabs({ views, active, onChange }) {
   return (
     <div className="flex items-center gap-1 bg-neutral-100 rounded-full p-1">
@@ -294,10 +298,10 @@ function PersonCard({
   const [expanded, setExpanded] = useState(false);
   return (
     <div className="border border-neutral-100 rounded-xl p-4 flex flex-col gap-3">
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-start justify-between gap-2 cursor-pointer" role="button" tabIndex={0} onClick={() => setExpanded((value) => !value)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpanded((value) => !value); } }}>
         <div>
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium text-neutral-800">{person.name}</span>
+            <button type="button" onClick={(e) => { e.stopPropagation(); setExpanded((value) => !value); }} aria-expanded={expanded} aria-controls={`person-details-${person.id}`} className="text-sm font-medium text-neutral-800 text-left hover:underline">{person.name}</button>
             <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-neutral-100 text-neutral-500">{person.type}</span>
             {overdue
               ? <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-rose-50 text-rose-600">Overdue · {days}d</span>
@@ -306,8 +310,8 @@ function PersonCard({
           <p className="text-xs text-neutral-400 mt-1">Last talked {person.lastContacted} · check in every {person.threshold}d</p>
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" aria-expanded={expanded} aria-controls={`person-details-${person.id}`} onClick={() => setExpanded((value) => !value)} className="w-7 h-7 rounded-lg bg-neutral-50 text-neutral-400 flex items-center justify-center transition-transform duration-180 ease-out active:scale-[0.97]" title={expanded ? "Collapse details" : "Expand details"}><ChevronDown size={14} className={`transition-transform duration-180 ease-out ${expanded ? "rotate-180" : ""}`} /></button>
-          <button onClick={() => onDelete(person.id)} aria-label={`Delete ${person.name}`}><Trash2 size={14} className="text-neutral-300" /></button>
+          <button type="button" aria-expanded={expanded} aria-controls={`person-details-${person.id}`} onClick={(e) => { e.stopPropagation(); setExpanded((value) => !value); }} className="w-7 h-7 rounded-lg bg-neutral-50 text-neutral-400 flex items-center justify-center transition-transform duration-180 ease-out active:scale-[0.97]" title={expanded ? "Collapse details" : "Expand details"}><ChevronDown size={14} className={`transition-transform duration-180 ease-out ${expanded ? "rotate-180" : ""}`} /></button>
+          <button onClick={(e) => { e.stopPropagation(); onDelete(person.id); }} aria-label={`Delete ${person.name}`}><Trash2 size={14} className="text-neutral-300" /></button>
         </div>
       </div>
 
@@ -402,16 +406,44 @@ export default function PersonalLifeOS() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [performanceAdvice, setPerformanceAdvice] = useState("");
   const [coachMessages, setCoachMessages] = useState([]);
+  const [coachInput, setCoachInput] = useState("");
+  const [ideaResult, setIdeaResult] = useState(null);
   const performanceAdviceMutation = trpc.advice.performance.useMutation();
   const coachMutation = trpc.advice.coach.useMutation();
+  const ideasMutation = trpc.advice.ideas.useMutation();
 
   function askPerformanceAdvice() {
     performanceAdviceMutation.mutate({ context: JSON.stringify({ overall, financeScore, fitnessScore, workScore, schoolScore, relationshipScore, unfinishedTodos: todos.filter((t) => !t.done), overduePeople: people.filter((p) => daysSince(p.lastContacted) > p.threshold) }) }, { onSuccess: (data) => setPerformanceAdvice(data.text), onError: () => setPerformanceAdvice("I couldn’t generate advice right now. Please try again.") });
   }
   function askLifeCoach(message) {
-    if (!message.trim()) return;
-    setCoachMessages((prev) => [...prev, { role: "user", text: message }]);
-    coachMutation.mutate({ message, context: JSON.stringify({ overall, unfinishedTodos: todos.filter((t) => !t.done), debts: debtRows, income: incomeRows, history: coachMessages }) }, { onSuccess: (data) => setCoachMessages((prev) => [...prev, { role: "assistant", text: data.text }]), onError: () => setCoachMessages((prev) => [...prev, { role: "assistant", text: "I couldn’t respond right now. Please try again." }]) });
+    const trimmed = message.trim();
+    if (!trimmed || coachMutation.isPending) return;
+    const nextHistory = [...coachMessages, { role: "user", text: trimmed }];
+    setCoachMessages(nextHistory);
+    coachMutation.mutate({ message: trimmed, context: JSON.stringify({ overall, unfinishedTodos: todos.filter((t) => !t.done), debts: debtRows, income: incomeRows, history: nextHistory }) }, { onSuccess: (data) => setCoachMessages((prev) => [...prev, { role: "assistant", text: data.text }]), onError: () => setCoachMessages((prev) => [...prev, { role: "assistant", text: "I couldn’t respond right now. Please try again." }]) });
+  }
+  function askIdeas(section, context) {
+    setIdeaResult({ section, text: "" });
+    ideasMutation.mutate({ section, context }, { onSuccess: (data) => setIdeaResult({ section, text: data.text }), onError: () => setIdeaResult({ section, text: "I couldn’t generate ideas right now. Please try again." }) });
+  }
+  function openNotification(target, sub) {
+    setTab(target);
+    if (target === "home" && sub) setHomeSub(sub);
+    if (target === "school" && sub && ["Georgetown", "Masters"].includes(sub)) setSchoolSub(sub);
+    if (target === "finance" && sub && ["income", "debts"].includes(sub)) setFinanceSub(sub);
+    if (target === "relationships" && sub && ["Family", "Friends", "Other"].includes(sub)) setRelationshipsSub(sub);
+    if (target === "work" && sub) {
+      const project = projects.find((p) => p.name === sub);
+      if (project) setActiveProject(project.id);
+    }
+    setShowNotifications(false);
+  }
+  function notificationTargetForTodo(todo) {
+    if (todo.domain === "work") {
+      const project = projects.find((p) => todo.text.toLowerCase().includes(p.name.toLowerCase())) || currentProject;
+      return { target: "work", sub: project?.name };
+    }
+    return { target: todo.domain || "home", sub: todo.domain ? undefined : "upcoming" };
   }
 
   // Todos & reminders (freeform, not tied to a specific tracker record)
@@ -800,9 +832,9 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
   ]);
   const daysSince = (d) => Math.floor((new Date("2026-08-28") - new Date(d)) / 86400000);
   const relationshipsFiltered = people.filter((p) =>
-    relationshipsSub === "Family" ? p.type === "Family" :
-    relationshipsSub === "Friends" ? p.type === "Friend" :
-    (p.type === "Colleague" || p.type === "Other")
+    relationshipsSub === "Family" ? ["Family", "Mother", "Father", "Brother", "Sister", "Uncle", "Aunt", "Cousin"].includes(p.type) :
+    relationshipsSub === "Friends" ? ["Friend", "Girlfriend", "Boyfriend", "Ex-girlfriend", "Ex-boyfriend", "Partner", "Classmate"].includes(p.type) :
+    !["Family", "Mother", "Father", "Brother", "Sister", "Uncle", "Aunt", "Cousin", "Friend", "Girlfriend", "Boyfriend", "Ex-girlfriend", "Ex-boyfriend", "Partner", "Classmate"].includes(p.type)
   );
 
   function addActivity(personId, type, text) {
@@ -991,9 +1023,9 @@ If nothing in the transcript maps to an action, return an empty actions array bu
   ];
 
   const nudges = [
-    { text: `${debtRows.filter(d => d.status === "Active" && d.balance > 1000000).length} debts have a balance over 1,000,000`, icon: AlertTriangle },
-    { text: `${people.filter(p => daysSince(p.lastContacted) > p.threshold).length} people are overdue for a check-in`, icon: Users },
-    { text: `${assignments.filter(a => a.status === "Not Started").length} assignment not started this week`, icon: GraduationCap },
+    { text: `${debtRows.filter(d => d.status === "Active" && d.balance > 1000000).length} debts have a balance over 1,000,000`, icon: AlertTriangle, target: "finance", sub: "debts" },
+    { text: `${people.filter(p => daysSince(p.lastContacted) > p.threshold).length} people are overdue for a check-in`, icon: Users, target: "relationships", sub: "Friends" },
+    { text: `${assignments.filter(a => a.status === "Not Started").length} assignment not started this week`, icon: GraduationCap, target: "school", sub: schoolSub },
   ];
 
   const navItems = [
@@ -1049,7 +1081,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
     <div className="flex min-h-screen bg-neutral-100 font-sans">
       {saveSnapshot.isError && <div className="fixed top-3 right-3 z-50 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 shadow-sm">Your latest change could not be saved. Please retry.</div>}
       {/* sidebar — desktop only */}
-      <div className="hidden md:flex w-20 bg-neutral-950 flex-col items-center py-6 gap-2">
+      <div className="hidden md:flex fixed inset-y-0 left-0 z-20 w-20 bg-neutral-950 flex-col items-center py-6 gap-2 overflow-hidden">
         <div className="w-9 h-9 rounded-xl bg-lime-400 flex items-center justify-center mb-6">
           <Gauge size={18} className="text-neutral-950" />
         </div>
@@ -1070,7 +1102,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
       <MobileDock items={navItems} active={tab} onChange={setTab} />
 
       {/* main */}
-      <div className="flex-1 p-4 md:p-6 overflow-y-auto pb-28 md:pb-6 min-w-0">
+      <div className="flex-1 md:ml-20 p-4 md:p-6 overflow-y-auto pb-28 md:pb-6 min-w-0">
         <div className="flex items-center justify-between mb-6 gap-3">
           <div>
             <h1 className="text-lg md:text-xl font-semibold text-neutral-900">
@@ -1081,6 +1113,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
             </p>
           </div>
           <div className="flex items-center gap-3 shrink-0">
+            {tab !== "home" && <IdeaButton loading={ideasMutation.isPending && ideaResult?.section === (domainMeta[tab]?.label || tab)} onClick={() => askIdeas(domainMeta[tab]?.label || tab, JSON.stringify({ tab, todos, income: incomeRows, debts: debtRows, applications, assignments, people }))} />}
             <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center">
               <Search size={16} className="text-neutral-400" />
             </div>
@@ -1091,7 +1124,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
               {(nudges.length > 0) && <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-lime-400 text-[10px] text-neutral-950 flex items-center justify-center">{nudges.length}</span>}
               {showNotifications && <div className="absolute right-0 top-11 z-30 w-72 rounded-2xl bg-white p-4 shadow-xl border border-neutral-100">
                 <div className="flex items-center justify-between mb-3"><p className="text-sm font-semibold text-neutral-900">Notifications</p><button onClick={() => setShowNotifications(false)} className="text-xs text-neutral-400">Close</button></div>
-                <div className="flex flex-col gap-2">{nudges.length === 0 && upcomingTodos.length === 0 && <div className="rounded-xl bg-neutral-50 px-3 py-3 text-xs text-neutral-500">You’re all caught up. No new notifications.</div>}{nudges.map((n, i) => <div key={i} className="rounded-xl bg-lime-50 px-3 py-2 text-xs text-lime-900">{n.text}</div>)}{upcomingTodos.slice(0, 3).map((t) => <div key={t.id} className="rounded-xl bg-neutral-50 px-3 py-2 text-xs text-neutral-700">Upcoming: {t.text} · {t.due}</div>)}</div>
+                <div className="flex flex-col gap-2">{nudges.length === 0 && upcomingTodos.length === 0 && <div className="rounded-xl bg-neutral-50 px-3 py-3 text-xs text-neutral-500">You’re all caught up. No new notifications.</div>}{nudges.map((n, i) => <button type="button" key={i} onClick={() => openNotification(n.target, n.sub)} className="text-left rounded-xl bg-lime-50 px-3 py-2 text-xs text-lime-900 transition-transform duration-150 hover:-translate-y-0.5 active:scale-[0.99]">{n.text}<span className="block text-[10px] text-lime-700 mt-0.5">Open {domainMeta[n.target]?.label || n.target}</span></button>)}{upcomingTodos.slice(0, 3).map((t) => <button type="button" key={t.id} onClick={() => { const destination = notificationTargetForTodo(t); openNotification(destination.target, destination.sub); }} className="text-left rounded-xl bg-neutral-50 px-3 py-2 text-xs text-neutral-700 transition-transform duration-150 hover:-translate-y-0.5 active:scale-[0.99]">Upcoming: {t.text} · {t.due}<span className="block text-[10px] text-neutral-400 mt-0.5">Open related section</span></button>)}</div>
               </div>}
             </div>
           </div>
@@ -1155,9 +1188,11 @@ If nothing in the transcript maps to an action, return an empty actions array bu
                       ))}
                       <button onClick={askPerformanceAdvice} disabled={performanceAdviceMutation.isPending} className="px-3 py-2 bg-neutral-950 text-white text-xs font-medium rounded-lg">{performanceAdviceMutation.isPending ? "Reviewing…" : "Get advice on my performance"}</button>
                       {performanceAdvice && <div className="bg-neutral-50 rounded-xl p-3 text-sm text-neutral-700 whitespace-pre-wrap">{performanceAdvice}</div>}
+                      <div className="flex justify-end"><IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Overall performance"} onClick={() => askIdeas("Overall performance", JSON.stringify({ overall, financeScore, fitnessScore, workScore, schoolScore, relationshipScore, unfinishedTodos: todos.filter((t) => !t.done) }))} /></div>
+                      {ideaResult && <div className="bg-lime-50 rounded-xl p-3 text-xs text-lime-900 whitespace-pre-wrap"><p className="font-medium mb-1">{ideaResult.section}</p>{ideaResult.text || "Generating ideas…"}</div>}
                       <div className="pt-2 border-t border-neutral-100">
                         <p className="text-xs font-medium text-neutral-500 mb-2">Ask your AI life coach</p>
-                        <div className="flex gap-2"><input id="life-coach-input" placeholder="What should I focus on today?" className="flex-1 text-xs border border-neutral-200 rounded-lg px-3 py-2" /><button onClick={() => { const el = document.getElementById("life-coach-input"); askLifeCoach(el?.value || ""); if (el) el.value = ""; }} disabled={coachMutation.isPending} className="px-3 py-2 bg-lime-400 text-neutral-950 text-xs font-medium rounded-lg">Ask</button></div>
+                        <div className="flex gap-2"><input id="life-coach-input" value={coachInput} onChange={(e) => setCoachInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { askLifeCoach(coachInput); setCoachInput(""); } }} placeholder="What should I focus on today?" className="flex-1 text-xs border border-neutral-200 rounded-lg px-3 py-2" /><button onClick={() => { askLifeCoach(coachInput); setCoachInput(""); }} disabled={coachMutation.isPending || !coachInput.trim()} className="px-3 py-2 bg-lime-400 text-neutral-950 text-xs font-medium rounded-lg">{coachMutation.isPending ? "…" : "Ask"}</button></div>
                         {coachMessages.slice(-2).map((m, i) => <div key={i} className={`mt-2 rounded-xl px-3 py-2 text-xs ${m.role === "user" ? "bg-neutral-950 text-white" : "bg-lime-50 text-lime-900"}`}>{m.text}</div>)}
                       </div>
                     </div>
@@ -1273,7 +1308,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
             />
 
             {financeSub === "income" && (
-            <SectionCard title="Income tracker" right={<ViewTabs views={["Expected", "Received", "All Incoming", "By Date"]} active={incomeView} onChange={setIncomeView} />}>
+            <SectionCard title="Income tracker" right={<div className="flex items-center gap-2"><IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Income"} onClick={() => askIdeas("Income", JSON.stringify({ income: incomeRows }))} /><ViewTabs views={["Expected", "Received", "All Incoming", "By Date"]} active={incomeView} onChange={setIncomeView} /></div>}>
               <div className="overflow-x-auto">
               <table className="w-full min-w-[560px] text-sm">
                 <thead>
@@ -1323,7 +1358,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
             {financeSub === "debts" && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               <div className="md:col-span-2">
-                <SectionCard title="Debt tracker" right={<ViewTabs views={["Table", "Active", "Paid"]} active={debtView} onChange={setDebtView} />}>
+                <SectionCard title="Debt tracker" right={<div className="flex items-center gap-2"><IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Debt"} onClick={() => askIdeas("Debt", JSON.stringify({ debts: debtRows }))} /><ViewTabs views={["Table", "Active", "Paid"]} active={debtView} onChange={setDebtView} /></div>}>
                   <div className="overflow-x-auto">
                   <table className="w-full min-w-[480px] text-sm">
                     <thead>
@@ -1361,7 +1396,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
                   </div>
                 </SectionCard>
               </div>
-              <SectionCard title="Active balance">
+              <SectionCard title="Active balance" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Active balance"} onClick={() => askIdeas("Active balance", JSON.stringify({ debts: debtRows, income: incomeRows }))} />}>
                 <div style={{ height: 180 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
@@ -1401,7 +1436,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
             {healthSub === "fitness" && (
               <>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                  <SectionCard title="Weight goal">
+                  <SectionCard title="Weight goal" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Weight goal"} onClick={() => askIdeas("Weight goal", JSON.stringify({ currentWeight, targetWeight, targetDate, goalProgress }))} />}>
                     <p className="text-sm text-neutral-500 mb-1">Target</p>
                     <p className="text-2xl font-semibold text-neutral-900 mb-3">{targetWeight}kg by {targetDate}</p>
                     <div className="w-full h-2 bg-neutral-100 rounded-full overflow-hidden mb-2">
@@ -1415,6 +1450,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
 
                 <SectionCard title="Weight trend" right={
                   <div className="flex items-center gap-2">
+                    <IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Weight trend"} onClick={() => askIdeas("Weight trend", JSON.stringify({ weight }))} />
                     <input type="number" step="0.1" placeholder="Today's kg" value={newWeight} onChange={(e) => setNewWeight(e.target.value)} className="w-24 text-sm border border-neutral-200 rounded-lg px-2 py-1.5" />
                     <button onClick={addWeight} className="px-3 py-1.5 bg-lime-400 text-neutral-950 text-xs font-medium rounded-lg flex items-center gap-1"><Plus size={12} /> Log</button>
                   </div>
@@ -1432,7 +1468,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
                   </div>
                 </SectionCard>
 
-                <SectionCard title="Workout log">
+                <SectionCard title="Workout log" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Workout log"} onClick={() => askIdeas("Workout log", JSON.stringify({ workouts }))} />}>
                   <div className="flex flex-col sm:flex-row gap-2 mb-4">
                     <input placeholder="Workout type" value={newWorkout.type} onChange={(e) => setNewWorkout({ ...newWorkout, type: e.target.value })} className="flex-1 text-sm border border-neutral-200 rounded-lg px-3 py-2" />
                     <input placeholder="Duration (e.g. 45 min)" value={newWorkout.duration} onChange={(e) => setNewWorkout({ ...newWorkout, duration: e.target.value })} className="sm:w-40 text-sm border border-neutral-200 rounded-lg px-3 py-2" />
@@ -1464,12 +1500,12 @@ If nothing in the transcript maps to an action, return an empty actions array bu
                   <StatCard icon={Moon} iconColor="blue" label="Average sleep (logged)" value={`${avgSleep}h`} />
                   <StatCard icon={Moon} iconColor="violet" label="Last night" value={`${sleep[sleep.length - 1]?.hours || 0}h`} />
                 </div>
-                <SectionCard title="Sleep log" right={
+                <SectionCard title="Sleep log" right={<div className="flex items-center gap-2"><IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Sleep"} onClick={() => askIdeas("Sleep", JSON.stringify({ sleep }))} />
                   <div className="flex items-center gap-2">
                     <input type="number" step="0.5" placeholder="Hours" value={newSleep} onChange={(e) => setNewSleep(e.target.value)} className="w-20 text-sm border border-neutral-200 rounded-lg px-2 py-1.5" />
                     <button onClick={addSleep} className="px-3 py-1.5 bg-lime-400 text-neutral-950 text-xs font-medium rounded-lg flex items-center gap-1"><Plus size={12} /> Log</button>
                   </div>
-                }>
+                </div>}>
                   <div style={{ height: 200 }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={sleep}>
@@ -1492,7 +1528,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
                   <StatCard icon={Calendar} iconColor="blue" label="Next appointment" value={nextAppointment} />
                 </div>
 
-                <SectionCard title="Diseases & conditions">
+                <SectionCard title="Diseases & conditions" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Health conditions"} onClick={() => askIdeas("Health conditions", JSON.stringify({ diseases, conditionLog }))} />}>
                   <div className="flex flex-col">
                     {diseases.map((d) => (
                       <div key={d.id} className="flex items-center justify-between py-2.5 border-b border-neutral-100 last:border-0">
@@ -1519,7 +1555,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
                   </div>
                 </SectionCard>
 
-                <SectionCard title="Ask the health assistant">
+                <SectionCard title="Ask the health assistant" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Health assistant"} onClick={() => askIdeas("Health assistant", JSON.stringify({ diseases, conditionLog }))} />}>
                   <div className="flex flex-col gap-2 max-h-72 overflow-y-auto mb-4">
                     {aiMessages.map((m, i) => (
                       <div key={i} className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${m.role === "user" ? "self-end bg-neutral-950 text-white" : "self-start bg-lime-50 text-lime-900"}`}>
@@ -1546,7 +1582,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
                   <p className="text-xs text-neutral-400 mt-2">General habit suggestions only — not a substitute for medical advice.</p>
                 </SectionCard>
 
-                <SectionCard title="Condition log">
+                <SectionCard title="Condition log" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Condition log"} onClick={() => askIdeas("Condition log", JSON.stringify({ conditionLog, diseases }))} />}>
                   <div className="flex flex-col sm:flex-row gap-2 mb-4">
                     <div className="flex-1"><VoiceNoteBox onSubmit={(value) => setNewCondition({ ...newCondition, note: value })} placeholder="Record how you are feeling today, or type it here…" /></div>
                     <label className="flex items-center gap-2 text-sm text-neutral-600 px-2">
@@ -1611,7 +1647,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
               </button>
             </div>
 
-            <SectionCard title={currentProject?.name}>
+            <SectionCard title={currentProject?.name} right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Work project"} onClick={() => askIdeas("Work project", JSON.stringify({ project: currentProject }))} />}>
               <div className="overflow-x-auto">
               <table className="w-full min-w-[480px] text-sm">
                 <thead>
@@ -1661,7 +1697,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
 
             {schoolSub === "Georgetown" && (
               <>
-                <SectionCard title="My Classes">
+                <SectionCard title="My Classes" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "My Classes"} onClick={() => askIdeas("My Classes", JSON.stringify({ classes, schoolSub }))} />}>
                   {classes.length === 0 && (
                     <p className="text-sm text-neutral-400 mb-2">No classes added yet — add the classes you're taking this semester below.</p>
                   )}
@@ -1689,7 +1725,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
                   </div>
                 </SectionCard>
 
-                <SectionCard title="Syllabus & Key Dates">
+                <SectionCard title="Syllabus & Key Dates" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Syllabus & Key Dates"} onClick={() => askIdeas("Syllabus & Key Dates", JSON.stringify({ syllabusEvents, schoolSub }))} />}>
                   {upcomingSyllabusEvents.length === 0 ? (
                     <p className="text-sm text-neutral-400">No quizzes, midterms, or exams tracked yet — add syllabus dates below as you get them, and they'll show up in your todos too.</p>
                   ) : (
@@ -1742,9 +1778,11 @@ If nothing in the transcript maps to an action, return an empty actions array bu
               </>
             )}
 
+            {ideaResult && tab !== "home" && <div className="bg-lime-50 rounded-2xl p-4 text-sm text-lime-900 whitespace-pre-wrap"><p className="font-medium mb-1">{ideaResult.section}</p>{ideaResult.text || "Generating ideas…"}</div>}
             {schoolSub === "Masters" && (
               <>
-                <SectionCard title="Applications">
+                <p className="text-xs text-neutral-500 -mb-2">AI Ideas uses the deadlines you enter here and will clearly flag anything that must be verified on each program’s official admissions website.</p>
+                <SectionCard title="Applications" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Masters applications"} onClick={() => askIdeas("Masters applications", JSON.stringify({ applications, recommenders, mastersTodos }))} />}>
                   {applications.length === 0 ? (
                     <p className="text-sm text-neutral-400">No programs added yet — add schools you're applying to below.</p>
                   ) : (
@@ -1785,7 +1823,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
                   <p className="text-xs text-neutral-400 mt-3">Tap a status pill to cycle: Not Started → In Progress → Submitted → Received.</p>
                 </SectionCard>
 
-                <SectionCard title="Recommendations & Materials">
+                <SectionCard title="Recommendations & Materials" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Masters recommendations"} onClick={() => askIdeas("Masters recommendations", JSON.stringify({ applications, recommenders, mastersTodos }))} />}>
                   {recommenders.length === 0 ? (
                     <p className="text-sm text-neutral-400">No recommenders added yet — track who you're asking and where things stand below.</p>
                   ) : (
@@ -1823,7 +1861,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
                   <p className="text-xs text-neutral-400 mt-3">Tap a status pill to cycle: Not Asked → Asked → Confirmed → Submitted.</p>
                 </SectionCard>
 
-                <SectionCard title="Masters To-Dos">
+                <SectionCard title="Masters To-Dos" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Masters preparation"} onClick={() => askIdeas("Masters preparation", JSON.stringify({ applications, recommenders, mastersTodos, today }))} />}>
                   {mastersTodos.length === 0 && <p className="text-sm text-neutral-400 mb-2">Nothing here yet — anything you add with the "school" domain from your Todos will also show up here.</p>}
                   <div className="flex flex-col">
                     {mastersTodos.map((t) => (
@@ -1863,7 +1901,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
               ))}
             </div>
 
-            <SectionCard title="Assignments">
+            <SectionCard title="Assignments" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Assignments"} onClick={() => askIdeas("Assignments", JSON.stringify({ assignments, schoolSub }))} />}>
               <div className="overflow-x-auto">
               <table className="w-full min-w-[480px] text-sm">
                 <thead>
@@ -1896,7 +1934,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
               </div>
             </SectionCard>
 
-            <SectionCard title="Readings">
+            <SectionCard title="Readings" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Readings"} onClick={() => askIdeas("Readings", JSON.stringify({ readings, schoolSub }))} />}>
               <div className="flex flex-col">
                 {schoolReadings.map((r) => (
                   <div key={r.id} className="flex items-center justify-between py-2.5 border-b border-neutral-100 last:border-0">
@@ -1930,7 +1968,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
               onChange={setRelationshipsSub}
             />
 
-            <SectionCard title={relationshipsSub}>
+            <SectionCard title={relationshipsSub} right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Relationships"} onClick={() => askIdeas("Relationships", JSON.stringify({ people }))} />}>
               {relationshipsFiltered.length === 0 && (
                 <p className="text-sm text-neutral-400 mb-2">No one here yet — add someone below.</p>
               )}
@@ -1958,7 +1996,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
               <div className="flex flex-col sm:flex-row gap-2 mt-4 pt-4 border-t border-neutral-100">
                 <input placeholder="Name" value={newPerson.name} onChange={(e) => setNewPerson({ ...newPerson, name: e.target.value })} className="flex-1 text-sm border border-neutral-200 rounded-lg px-3 py-2" />
                 <select value={newPerson.type} onChange={(e) => setNewPerson({ ...newPerson, type: e.target.value })} className="text-sm border border-neutral-200 rounded-lg px-3 py-2">
-                  <option>Family</option><option>Friend</option><option>Colleague</option><option>Other</option>
+                  <option>Family</option><option>Mother</option><option>Father</option><option>Brother</option><option>Sister</option><option>Uncle</option><option>Aunt</option><option>Cousin</option><option>Friend</option><option>Girlfriend</option><option>Boyfriend</option><option>Ex-girlfriend</option><option>Ex-boyfriend</option><option>Partner</option><option>Classmate</option><option>Colleague</option><option>Mentor</option><option>Neighbor</option><option>Other</option>
                 </select>
                 <input placeholder="Check-in every (days)" value={newPerson.threshold} onChange={(e) => setNewPerson({ ...newPerson, threshold: e.target.value })} className="sm:w-40 text-sm border border-neutral-200 rounded-lg px-3 py-2" />
                 <button onClick={addPerson} className="px-4 py-2 bg-lime-400 text-neutral-950 text-sm font-medium rounded-lg flex items-center justify-center gap-1"><Plus size={14} /> Add</button>
