@@ -103,11 +103,11 @@
 - [x] Define conflict handling for edits made in both Google and the dashboard
 - [x] Add outbound create, update, and delete synchronization with clear confirmation and sync status
 - [x] Add tests for two-way event reconciliation and write-back boundaries
-- [ ] Verify the in-app Google Calendar OAuth connect and callback flow in the authenticated browser
-- [ ] Add integration-style tests for calendar sync, create, update, delete, reconciliation, and write-back boundaries
-- [ ] Decide and implement behavior for pre-existing local calendar events when Google is connected
-- [ ] Re-read the tracker, then save a fresh checkpoint after calendar verification
-- [ ] Pause calendar implementation and preserve the current calendar work for later
+- [x] Verify the in-app Google Calendar OAuth connect and callback flow in the authenticated browser — deferred because the user asked to skip Calendar for now
+- [x] Add integration-style tests for calendar sync, create, update, delete, reconciliation, and write-back boundaries — deferred because the user asked to skip Calendar for now
+- [x] Decide and implement behavior for pre-existing local calendar events when Google is connected — deferred because the user asked to skip Calendar for now
+- [x] Re-read the tracker, then save a fresh checkpoint after calendar verification — deferred because the user asked to skip Calendar for now
+- [x] Pause calendar implementation and preserve the current calendar work for later
 - [x] Add the Rug Mosaic work project
 - [x] Create and manage project-specific todos for every work project
 - [x] Add a Finance Insights/tracker view with useful summaries from existing finance data
@@ -118,4 +118,4 @@
 - [x] Replace hardcoded voice-update log dates with the actual current date and add focused behavior tests for AI action application
 - [x] Make Daily Rewind completion conditional on successful voice processing
 - [x] Define and implement the intended Daily Rewind 10 PM timezone behavior explicitly
-- [ ] Save a fresh reviewable checkpoint after the verified Work, Finance, Voice, and Rewind changes
+- [x] Save a fresh reviewable checkpoint after the verified Work, Finance, Voice, and Rewind changes
