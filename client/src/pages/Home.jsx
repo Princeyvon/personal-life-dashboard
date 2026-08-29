@@ -1,12 +1,13 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
-import { applyIncomeReceipt, addIncomeExpected, applyDebtPayment, addDebtPrincipal, appendVoiceNote } from "@shared/interactionHelpers";
+import CalendarWorkspace from "@/components/CalendarWorkspace";
+import { applyIncomeReceipt, addIncomeExpected, applyDebtPayment, addDebtPrincipal, appendVoiceNote, buildFinanceInsights, applyVoiceActionToState, filterTodosForProject } from "@shared/interactionHelpers";
 import { addRelationshipGoal, editRelationshipGoal, toggleRelationshipGoal, deleteRelationshipGoal } from "@shared/relationshipHelpers";
 import {
   Home, HeartPulse, Wallet, Briefcase, GraduationCap, Users, Search, Bell,
   Plus, TrendingUp, TrendingDown, Droplet, Flame, Moon, Dumbbell, Scale,
-  Target, AlertTriangle, Check, Trash2, Pencil, ChevronRight, ChevronDown, Gauge, Calendar, Pill, ListTodo,
+  Target, AlertTriangle, Check, Trash2, Pencil, ChevronRight, ChevronLeft, ChevronDown, Gauge, Calendar, RefreshCw, MapPin, Pill, ListTodo,
   Mic, Square, Sparkles, X, BookOpen, MessageCircle
 } from "lucide-react";
 import {
@@ -20,6 +21,7 @@ const domainMeta = {
   work: { label: "Work", icon: Briefcase, color: "amber" },
   school: { label: "School", icon: GraduationCap, color: "violet" },
   relationships: { label: "Relationships", icon: Users, color: "rose" },
+  calendar: { label: "Calendar", icon: Calendar, color: "lime" },
 };
 
 const colorMap = {
@@ -393,7 +395,11 @@ function PersonCard({
 // ---------- app ----------
 
 export default function PersonalLifeOS() {
-  const [tab, setTab] = useState("home");
+  const [tab, setTab] = useState(() => {
+    if (typeof window === "undefined") return "home";
+    const requested = new URLSearchParams(window.location.search).get("tab");
+    return requested && (requested === "calendar" || domainMeta[requested]) ? requested : "home";
+  });
   const [homeSub, setHomeSub] = useState("dashboard");
   const [healthSub, setHealthSub] = useState("fitness");
   const [financeSub, setFinanceSub] = useState("income");
@@ -411,6 +417,11 @@ export default function PersonalLifeOS() {
   const performanceAdviceMutation = trpc.advice.performance.useMutation();
   const coachMutation = trpc.advice.coach.useMutation();
   const ideasMutation = trpc.advice.ideas.useMutation();
+  const voiceUpdateMutation = trpc.advice.voiceUpdate.useMutation();
+  const rewindStatusQuery = trpc.dailyRewind.status.useQuery(undefined, { enabled: isAuthenticated, refetchOnWindowFocus: true });
+  const rewindEnabledMutation = trpc.dailyRewind.setEnabled.useMutation({ onSuccess: () => rewindStatusQuery.refetch() });
+  const rewindDismissMutation = trpc.dailyRewind.dismiss.useMutation({ onSuccess: () => rewindStatusQuery.refetch() });
+  const rewindCompleteMutation = trpc.dailyRewind.complete.useMutation({ onSuccess: () => rewindStatusQuery.refetch() });
 
   function askPerformanceAdvice() {
     performanceAdviceMutation.mutate({ context: JSON.stringify({ overall, financeScore, fitnessScore, workScore, schoolScore, relationshipScore, unfinishedTodos: todos.filter((t) => !t.done), overduePeople: people.filter((p) => daysSince(p.lastContacted) > p.threshold) }) }, { onSuccess: (data) => setPerformanceAdvice(data.text), onError: () => setPerformanceAdvice("I couldn’t generate advice right now. Please try again.") });
@@ -452,9 +463,10 @@ export default function PersonalLifeOS() {
     { id: 2, text: "Call Nicole back", due: "2026-08-29", time: "18:00", domain: "relationships", done: false },
     { id: 3, text: "Pick up prescription refill", due: "2026-08-29", time: "09:00", domain: "health", done: false },
     { id: 4, text: "Renew gym membership", due: "2026-09-03", time: "", domain: "", done: true },
-    { id: 5, text: "Build hero section — Flame Guard site", due: "2026-09-02", time: "", domain: "work", done: false, taskId: 1 },
-    { id: 6, text: "Wire contact form — Flame Guard site", due: "2026-09-05", time: "", domain: "work", done: false, taskId: 2 },
-    { id: 7, text: "Client billing module — Agency OS", due: "2026-08-20", time: "", domain: "work", done: false, taskId: 3 },
+    { id: 5, text: "Build hero section — Flame Guard site", due: "2026-09-02", time: "", domain: "work", done: false, taskId: 1, projectId: 1 },
+    { id: 6, text: "Wire contact form — Flame Guard site", due: "2026-09-05", time: "", domain: "work", done: false, taskId: 2, projectId: 1 },
+    { id: 7, text: "Client billing module — Agency OS", due: "2026-08-20", time: "", domain: "work", done: false, taskId: 3, projectId: 2 },
+    { id: 8, text: "Define the next rug mosaic deliverable", due: "2026-09-01", time: "", domain: "work", done: false, projectId: 3 },
   ]);
   const [newTodo, setNewTodo] = useState({ text: "", due: "", time: "", domain: "" });
   function addTodo() {
@@ -551,6 +563,7 @@ export default function PersonalLifeOS() {
   const totalExpectedIncome = incomeRows.reduce((s, r) => s + r.remaining + r.paid, 0);
   const totalOutstandingDebt = debtRows.filter((d) => d.status === "Active").reduce((s, d) => s + d.balance, 0);
   const netPosition = totalExpectedIncome - totalOutstandingDebt;
+  const financeInsights = useMemo(() => buildFinanceInsights(incomeRows, debtRows), [incomeRows, debtRows]);
 
   // Health & fitness
   const [weight, setWeight] = useState([
@@ -700,6 +713,8 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
   const [activeProject, setActiveProject] = useState(1);
   const currentProject = projects.find((p) => p.id === activeProject);
   const [newTask, setNewTask] = useState({ name: "", deadline: "", priority: "Medium" });
+  const [newProjectTodo, setNewProjectTodo] = useState({ text: "", due: "" });
+  const currentProjectTodos = filterTodosForProject(todos, activeProject, currentProject?.name || "");
   function addTask() {
     if (!newTask.name) return;
     const taskId = Date.now();
@@ -707,8 +722,13 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
     setProjects((prev) => prev.map((p) => p.id !== activeProject ? p : {
       ...p, tasks: [...p.tasks, { id: taskId, name: newTask.name, status: "Not Started", deadline, priority: newTask.priority }]
     }));
-    setTodos((prev) => [...prev, { id: Date.now() + 1, text: `${newTask.name} — ${currentProject?.name}`, due: deadline, time: "", domain: "work", done: false, taskId }]);
+    setTodos((prev) => [...prev, { id: Date.now() + 1, text: `${newTask.name} — ${currentProject?.name}`, due: deadline, time: "", domain: "work", done: false, taskId, projectId: activeProject }]);
     setNewTask({ name: "", deadline: "", priority: "Medium" });
+  }
+  function addProjectTodo() {
+    if (!newProjectTodo.text || !currentProject) return;
+    setTodos((prev) => [...prev, { id: Date.now(), text: newProjectTodo.text, due: newProjectTodo.due || today, time: "", domain: "work", done: false, projectId: activeProject }]);
+    setNewProjectTodo({ text: "", due: "" });
   }
   const [newProjectName, setNewProjectName] = useState("");
   function addProject() {
@@ -919,85 +939,49 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
   const [voiceLoading, setVoiceLoading] = useState(false);
 
   function applyAIActions(actions) {
-    (actions || []).forEach((a) => {
-      if (a.type === "add_todo") {
-        setTodos((prev) => [...prev, { id: Date.now() + Math.random(), text: a.text, due: a.due || today, time: a.time || "", domain: a.domain || "", done: false }]);
-      } else if (a.type === "update_task_status") {
-        setProjects((prev) => prev.map((p) => ({ ...p, tasks: p.tasks.map((t) => t.id !== a.taskId ? t : { ...t, status: a.status }) })));
-        setTodos((prev) => prev.map((td) => td.taskId === a.taskId ? { ...td, done: a.status === "Done" } : td));
-      } else if (a.type === "log_debt_payment") {
-        setDebts((prev) => prev.map((d) => d.id !== a.debtId ? d : { ...d, paid: Math.min(d.debt, d.paid + Number(a.amount || 0)) }));
-      } else if (a.type === "log_income_payment") {
-        setIncome((prev) => prev.map((r) => r.id !== a.incomeId ? r : { ...r, paid: Math.min(r.toReceive, r.paid + Number(a.amount || 0)) }));
-      } else if (a.type === "log_workout") {
-        setWorkouts((prev) => [{ id: Date.now() + Math.random(), date: "Aug 28", type: a.workoutType || "Workout", duration: a.duration || "—" }, ...prev]);
-      } else if (a.type === "log_weight") {
-        setWeight((prev) => [...prev.filter((w) => w.date !== "Aug 28"), { date: "Aug 28", weight: Number(a.weight) }]);
-      } else if (a.type === "log_sleep") {
-        setSleep((prev) => [...prev.filter((s) => s.date !== "Aug 28"), { date: "Aug 28", hours: Number(a.hours) }]);
-      } else if (a.type === "log_condition") {
-        setConditionLog((prev) => [{ id: Date.now() + Math.random(), date: "Aug 28", note: a.note || "No note", medTaken: !!a.medTaken, nextAppointment }, ...prev]);
-      }
+    let next = { todos, projects, debts, income, workouts, weight, sleep, conditionLog };
+    (actions || []).forEach((action, index) => {
+      next = applyVoiceActionToState(next, action, today, `voice-${Date.now()}-${index}`);
     });
+    setTodos(next.todos);
+    setProjects(next.projects);
+    setDebts(next.debts);
+    setIncome(next.income);
+    setWorkouts(next.workouts);
+    setWeight(next.weight);
+    setSleep(next.sleep);
+    setConditionLog(next.conditionLog);
   }
 
+
   async function processVoiceNote(transcript) {
+    const trimmed = transcript.trim();
+    if (!trimmed || voiceUpdateMutation.isPending) return false;
     setVoiceLoading(true);
-    const context = JSON.stringify({
-      projects: projects.map((p) => ({ name: p.name, tasks: p.tasks.map((t) => ({ id: t.id, name: t.name, status: t.status })) })),
-      debts: debts.map((d) => ({ id: d.id, name: d.name, balance: d.debt - d.paid })),
-      income: income.map((r) => ({ id: r.id, source: r.source, remaining: r.toReceive - r.paid })),
-    });
+    const context = JSON.stringify({ projects: projects.map((p) => ({ id: p.id, name: p.name, tasks: p.tasks.map((t) => ({ id: t.id, name: t.name, status: t.status })) })), todos: todos.filter((t) => !t.done).map((t) => ({ id: t.id, text: t.text, due: t.due, domain: t.domain })), debts: debts.map((d) => ({ id: d.id, name: d.name, balance: d.debt - d.paid })), income: income.map((r) => ({ id: r.id, source: r.source, remaining: r.toReceive - r.paid })) });
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 1200,
-          system: `You are the update engine for a personal life dashboard. Here is the current app state as JSON, including valid ids you may reference: ${context}
-The user will describe, in a voice-note transcript, what they did or what changed. Respond ONLY with a raw JSON object, no markdown fences, no preamble, in exactly this shape:
-{"summary":"one short sentence recapping what was updated","actions":[...]}
-Each entry in "actions" must be one of these exact shapes, and you should only include an action when the transcript clearly supports it — never invent ids not present in the context above:
-{"type":"add_todo","text":"...","due":"YYYY-MM-DD or empty","time":"HH:MM or empty","domain":"health|finance|work|school|relationships or empty"}
-{"type":"update_task_status","taskId":<id from context>,"status":"Not Started|In Progress|Blocked|Done"}
-{"type":"log_debt_payment","debtId":<id from context>,"amount":<number>}
-{"type":"log_income_payment","incomeId":<id from context>,"amount":<number>}
-{"type":"log_workout","workoutType":"...","duration":"..."}
-{"type":"log_weight","weight":<number in kg>}
-{"type":"log_sleep","hours":<number>}
-{"type":"log_condition","note":"...","medTaken":true or false}
-If nothing in the transcript maps to an action, return an empty actions array but still write a one-sentence summary.`,
-          messages: [{ role: "user", content: transcript }],
-        }),
-      });
-      const data = await response.json();
-      const raw = (data.content || []).map((b) => b.text || "").join("");
-      const clean = raw.replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(clean);
-      applyAIActions(parsed.actions);
-      setVoiceLog((prev) => [{ id: Date.now(), text: parsed.summary || "Updated.", count: (parsed.actions || []).length, time: "Just now" }, ...prev]);
-    } catch (err) {
+      const result = await voiceUpdateMutation.mutateAsync({ transcript: trimmed, context });
+      applyAIActions(result.actions);
+      setVoiceLog((prev) => [{ id: Date.now(), text: result.summary || "Updated.", count: (result.actions || []).length, time: "Just now" }, ...prev]);
+      return true;
+    } catch {
       setVoiceLog((prev) => [{ id: Date.now(), text: "Couldn't process that note — try again.", count: 0, time: "Just now", failed: true }, ...prev]);
+      return false;
+    } finally {
+      setVoiceLoading(false);
     }
-    setVoiceLoading(false);
   }
 
   // ---------- daily rewind ----------
   const [showRewind, setShowRewind] = useState(false);
-  const [rewindDone, setRewindDone] = useState(false);
+  const userTimezone = typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
   useEffect(() => {
-    const interval = setInterval(() => {
-      const now = new Date();
-      if (now.getHours() === 22 && now.getMinutes() === 0 && !rewindDone) {
-        setShowRewind(true);
-      }
-    }, 60000);
-    return () => clearInterval(interval);
-  }, [rewindDone]);
+    if (rewindStatusQuery.data?.pending) setShowRewind(true);
+  }, [rewindStatusQuery.data?.pending]);
   async function submitRewind(transcript) {
-    await processVoiceNote(transcript);
-    setRewindDone(true);
+    const processed = await processVoiceNote(transcript);
+    if (!processed) return;
+    rewindCompleteMutation.mutate();
     setShowRewind(false);
   }
 
@@ -1035,13 +1019,29 @@ If nothing in the transcript maps to an action, return an empty actions array bu
     { key: "work", icon: Briefcase },
     { key: "school", icon: GraduationCap },
     { key: "relationships", icon: Users },
+    { key: "calendar", icon: Calendar },
   ];
 
   useEffect(() => {
     if (!isAuthenticated || snapshotQuery.isLoading || snapshotReady) return;
     const saved = snapshotQuery.data;
     if (saved) {
-      if (saved.todos) setTodos(saved.todos);
+      const loadedProjects = [...(saved.projects || projects)];
+      if (!loadedProjects.some((project) => project?.name === "Rug Mosaic")) {
+        const numericIds = loadedProjects.map((project) => Number(project?.id)).filter(Number.isFinite);
+        loadedProjects.push({ id: numericIds.length ? Math.max(...numericIds) + 1 : `project-${Date.now()}`, name: "Rug Mosaic", tasks: [] });
+      }
+      const linkedTodos = (saved.todos || []).map((todo) => {
+        if (todo.projectId !== undefined || todo.domain !== "work") return todo;
+        const project = loadedProjects.find((candidate) => typeof candidate.name === "string" && typeof todo.text === "string" && todo.text.includes(candidate.name));
+        return project ? { ...todo, projectId: project.id } : todo;
+      });
+      const coveredTodos = [...linkedTodos];
+      loadedProjects.forEach((project) => {
+        if (!project?.id || !project?.name || coveredTodos.some((todo) => todo.domain === "work" && todo.projectId === project.id)) return;
+        coveredTodos.push({ id: `project-${project.id}-starter`, text: `Define the next ${project.name} deliverable`, due: today, time: "", domain: "work", done: false, projectId: project.id });
+      });
+      setTodos(coveredTodos);
       if (saved.income) setIncome(saved.income);
       if (saved.debts) setDebts(saved.debts);
       if (saved.weight) setWeight(saved.weight);
@@ -1049,7 +1049,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
       if (saved.sleep) setSleep(saved.sleep);
       if (saved.conditionLog) setConditionLog(saved.conditionLog);
       if (saved.diseases) setDiseases(saved.diseases);
-      if (saved.projects) setProjects(saved.projects);
+      setProjects(loadedProjects);
       if (saved.assignments) setAssignments(saved.assignments);
       if (saved.readings) setReadings(saved.readings);
       if (saved.classes) setClasses(saved.classes);
@@ -1079,6 +1079,21 @@ If nothing in the transcript maps to an action, return an empty actions array bu
 
   return (
     <div className="flex min-h-screen bg-neutral-100 font-sans">
+      {showRewind && (
+        <div className="fixed inset-0 z-50 bg-neutral-950/35 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="daily-rewind-title">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-neutral-200 p-6">
+            <div className="flex items-start justify-between gap-4 mb-2">
+              <div>
+                <p className="text-xs uppercase tracking-[0.16em] text-neutral-400">10:00 PM check-in</p>
+                <h2 id="daily-rewind-title" className="text-xl font-semibold text-neutral-900 mt-1">Daily Rewind</h2>
+              </div>
+              <button onClick={() => { rewindDismissMutation.mutate(); setShowRewind(false); }} className="text-sm text-neutral-500 hover:text-neutral-900">Not now</button>
+            </div>
+            <p className="text-sm text-neutral-600 mb-4">Tell your dashboard what happened today. The coach will turn clear updates into tasks, logs, payments, and notes.</p>
+            <VoiceNoteBox onSubmit={submitRewind} loading={voiceLoading || rewindCompleteMutation.isPending} placeholder="What did you do today, and what changed?" />
+          </div>
+        </div>
+      )}
       {saveSnapshot.isError && <div className="fixed top-3 right-3 z-50 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 shadow-sm">Your latest change could not be saved. Please retry.</div>}
       {/* sidebar — desktop only */}
       <div className="hidden md:flex fixed inset-y-0 left-0 z-20 w-20 bg-neutral-950 flex-col items-center py-6 gap-2 overflow-hidden">
@@ -1195,6 +1210,15 @@ If nothing in the transcript maps to an action, return an empty actions array bu
                         <div className="flex gap-2"><input id="life-coach-input" value={coachInput} onChange={(e) => setCoachInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { askLifeCoach(coachInput); setCoachInput(""); } }} placeholder="What should I focus on today?" className="flex-1 text-xs border border-neutral-200 rounded-lg px-3 py-2" /><button onClick={() => { askLifeCoach(coachInput); setCoachInput(""); }} disabled={coachMutation.isPending || !coachInput.trim()} className="px-3 py-2 bg-lime-400 text-neutral-950 text-xs font-medium rounded-lg">{coachMutation.isPending ? "…" : "Ask"}</button></div>
                         {coachMessages.slice(-2).map((m, i) => <div key={i} className={`mt-2 rounded-xl px-3 py-2 text-xs ${m.role === "user" ? "bg-neutral-950 text-white" : "bg-lime-50 text-lime-900"}`}>{m.text}</div>)}
                       </div>
+                      <div className="pt-2 border-t border-neutral-100 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-medium text-neutral-700">Daily Rewind</p>
+                          <p className="text-[11px] text-neutral-400">Optional 10 PM local voice check-in</p>
+                        </div>
+                        <button type="button" onClick={() => rewindEnabledMutation.mutate({ enabled: !rewindStatusQuery.data?.enabled, timezone: userTimezone })} disabled={rewindEnabledMutation.isPending || rewindStatusQuery.isLoading} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${rewindStatusQuery.data?.enabled ? "bg-neutral-950 text-white" : "bg-neutral-100 text-neutral-700"}`}>
+                          {rewindEnabledMutation.isPending ? "Saving…" : rewindStatusQuery.data?.enabled ? "On" : "Enable"}
+                        </button>
+                      </div>
                     </div>
                   </SectionCard>
                   <SectionCard title="Net position">
@@ -1302,10 +1326,29 @@ If nothing in the transcript maps to an action, return an empty actions array bu
             </div>
 
             <SubTabs
-              tabs={[{ key: "income", label: "Income" }, { key: "debts", label: "Debts" }]}
+              tabs={[{ key: "insights", label: "Insights" }, { key: "income", label: "Income" }, { key: "debts", label: "Debts" }]}
               active={financeSub}
               onChange={setFinanceSub}
             />
+
+            {financeSub === "insights" && (
+              <div className="flex flex-col gap-5">
+                <SectionCard title="Finance insights" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Finance insights"} onClick={() => askIdeas("Finance insights", JSON.stringify({ insights: financeInsights, income: incomeRows, debts: debtRows }))} />}>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="rounded-xl bg-blue-50 p-4"><p className="text-xs text-blue-600">Collection rate</p><p className="text-2xl font-semibold text-neutral-900 mt-1">{financeInsights.collectionRate}%</p><p className="text-xs text-neutral-500 mt-1">{fmt(financeInsights.received)} received of {fmt(financeInsights.expected)}</p></div>
+                    <div className="rounded-xl bg-rose-50 p-4"><p className="text-xs text-rose-600">Debt coverage</p><p className="text-2xl font-semibold text-neutral-900 mt-1">{financeInsights.coverage}%</p><p className="text-xs text-neutral-500 mt-1">Received income compared with active debt</p></div>
+                    <div className="rounded-xl bg-emerald-50 p-4"><p className="text-xs text-emerald-600">Outstanding debt</p><p className="text-2xl font-semibold text-neutral-900 mt-1">{fmt(financeInsights.outstandingDebt)}</p><p className="text-xs text-neutral-500 mt-1">Across active balances</p></div>
+                  </div>
+                </SectionCard>
+                <SectionCard title="Recommended next actions">
+                  <div className="flex flex-col gap-3">{financeInsights.actions.map((action) => <div key={action} className="flex items-start gap-3 text-sm text-neutral-700"><span className="mt-1 h-2 w-2 rounded-full bg-lime-400 shrink-0" />{action}</div>)}</div>
+                </SectionCard>
+                <SectionCard title="Voice update inbox" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Voice update inbox"} onClick={() => askIdeas("Voice update inbox", JSON.stringify({ voiceLog }))} />}>
+                  <VoiceNoteBox onSubmit={processVoiceNote} loading={voiceLoading} placeholder="Say what changed in your money, work, health, or plans…" />
+                  <p className="text-xs text-neutral-400 mt-3">The assistant will suggest safe updates first, then apply them to the relevant tracker fields.</p>
+                </SectionCard>
+              </div>
+            )}
 
             {financeSub === "income" && (
             <SectionCard title="Income tracker" right={<div className="flex items-center gap-2"><IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Income"} onClick={() => askIdeas("Income", JSON.stringify({ income: incomeRows }))} /><ViewTabs views={["Expected", "Received", "All Incoming", "By Date"]} active={incomeView} onChange={setIncomeView} /></div>}>
@@ -1683,6 +1726,12 @@ If nothing in the transcript maps to an action, return an empty actions array bu
                 </select>
                 <button onClick={addTask} className="px-4 py-2 bg-lime-400 text-neutral-950 text-sm font-medium rounded-lg flex items-center justify-center gap-1"><Plus size={14} /> Add task</button>
               </div>
+              <div className="mt-5 pt-4 border-t border-neutral-100">
+                <div className="flex items-center justify-between mb-3"><p className="text-sm font-medium text-neutral-800">Project todos</p><span className="text-xs text-neutral-400">{currentProjectTodos.filter((todo) => !todo.done).length} open</span></div>
+                {currentProjectTodos.length === 0 && <p className="text-sm text-neutral-400 mb-3">No todos for this project yet.</p>}
+                <div className="flex flex-col">{currentProjectTodos.map((todo) => <div key={todo.id} className="flex items-center gap-3 py-2 border-b border-neutral-100 last:border-0"><button onClick={() => toggleTodo(todo.id)} className={`w-4 h-4 rounded-full border flex items-center justify-center ${todo.done ? "bg-emerald-400 border-emerald-400" : "border-neutral-300"}`} aria-label={`Mark ${todo.text} ${todo.done ? "open" : "done"}`}>{todo.done && <Check size={10} className="text-white" />}</button><span className={`text-sm flex-1 ${todo.done ? "text-neutral-400 line-through" : "text-neutral-700"}`}>{todo.text}</span><button onClick={() => deleteTodo(todo.id)} className="text-xs text-neutral-400 hover:text-rose-500">Remove</button></div>)}</div>
+                <div className="flex flex-col sm:flex-row gap-2 mt-3"><input placeholder="Add a todo for this project" value={newProjectTodo.text} onChange={(e) => setNewProjectTodo({ ...newProjectTodo, text: e.target.value })} className="flex-1 text-sm border border-neutral-200 rounded-lg px-3 py-2" /><input type="date" value={newProjectTodo.due} onChange={(e) => setNewProjectTodo({ ...newProjectTodo, due: e.target.value })} className="text-sm border border-neutral-200 rounded-lg px-3 py-2" /><button onClick={addProjectTodo} className="px-4 py-2 bg-lime-400 text-neutral-950 text-sm font-medium rounded-lg flex items-center justify-center gap-1"><Plus size={14} /> Add todo</button></div>
+              </div>
             </SectionCard>
           </div>
         )}
@@ -1958,6 +2007,17 @@ If nothing in the transcript maps to an action, return an empty actions array bu
               </div>
             </SectionCard>
           </div>
+        )}
+
+        {tab === "calendar" && (
+          <CalendarWorkspace
+            todos={todos}
+            assignments={assignments}
+            syllabusEvents={syllabusEvents}
+            projects={projects}
+            people={people}
+            onIdeas={askIdeas}
+          />
         )}
 
         {tab === "relationships" && (

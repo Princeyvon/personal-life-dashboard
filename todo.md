@@ -82,4 +82,40 @@
 - [x] Pass project-specific context from work notification rows into notification navigation
 - [x] Add Ideas actions to health weight goal and weight trend sections
 - [x] Save a fresh checkpoint after the latest fixes and confirm its version
-- [ ] Confirm the fresh checkpoint version after the latest notification-routing and weight-Ideas fixes
+- [x] Confirm the fresh checkpoint version after the latest notification-routing and weight-Ideas fixes
+- [x] Add a dedicated Calendar workspace route and navigation entry
+- [x] Unify dashboard tasks, deadlines, project work, school deadlines, and relationship check-ins into calendar events; retain source-owned routines/goals for their normalized APIs
+- [x] Add Google Calendar-style month, week, day, and agenda views
+- [x] Add functional event create, edit, delete, and calendar navigation interactions
+- [x] Persist calendar events per authenticated user in the cloud database
+- [x] Inspect and configure an appropriate Google Calendar connection path
+- [x] Add safe two-way Google Calendar synchronization with conflict handling
+- [x] Apply requested Apple/Emil interaction polish and preserve the existing visual system
+- [x] Add responsive, accessibility, loading, empty, error, and sync states
+- [x] Add unit tests for calendar event transformations, credential encryption, and sync boundaries
+- [x] Run type checks, tests, build, OAuth route smoke test, and calendar visual verification
+- [x] Save a new reviewable calendar checkpoint
+- [x] Enable the existing Google Calendar connection after user approval
+- [x] Configure and document two-way Google ↔ dashboard sync semantics
+- [x] Ask the user to authorize Google Calendar when the connection presents its consent flow
+- [x] Change calendar sync direction from inbound-only to two-way Google ↔ dashboard sync
+- [x] Request or configure Google OAuth credentials with Calendar read/write scope for the webapp runtime
+- [x] Define conflict handling for edits made in both Google and the dashboard
+- [x] Add outbound create, update, and delete synchronization with clear confirmation and sync status
+- [x] Add tests for two-way event reconciliation and write-back boundaries
+- [ ] Verify the in-app Google Calendar OAuth connect and callback flow in the authenticated browser
+- [ ] Add integration-style tests for calendar sync, create, update, delete, reconciliation, and write-back boundaries
+- [ ] Decide and implement behavior for pre-existing local calendar events when Google is connected
+- [ ] Re-read the tracker, then save a fresh checkpoint after calendar verification
+- [ ] Pause calendar implementation and preserve the current calendar work for later
+- [x] Add the Rug Mosaic work project
+- [x] Create and manage project-specific todos for every work project
+- [x] Add a Finance Insights/tracker view with useful summaries from existing finance data
+- [x] Add voice-note intake that classifies and applies updates to relevant dashboard fields
+- [x] Extend Daily Rewind with an optional 10 PM voice capture and automatic update flow
+- [x] Add tests, responsive verification, and a new reviewable checkpoint
+- [x] Seed or generate at least one linked todo set for each work project, including Rug Mosaic, and verify project switching shows the correct scoped todos (covered by focused filter assertions)
+- [x] Replace hardcoded voice-update log dates with the actual current date and add focused behavior tests for AI action application
+- [x] Make Daily Rewind completion conditional on successful voice processing
+- [x] Define and implement the intended Daily Rewind 10 PM timezone behavior explicitly
+- [ ] Save a fresh reviewable checkpoint after the verified Work, Finance, Voice, and Rewind changes

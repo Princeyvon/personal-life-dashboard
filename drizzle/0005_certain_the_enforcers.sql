@@ -1,0 +1,1 @@
+ALTER TABLE `daily_rewind_settings` ADD `timezone` varchar(100) DEFAULT 'UTC' NOT NULL;

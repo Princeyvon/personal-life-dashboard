@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
 import { dashboardSnapshotSchema } from "@shared/dashboard";
-import { applyIncomeReceipt, addIncomeExpected, applyDebtPayment, addDebtPrincipal, appendVoiceNote } from "@shared/interactionHelpers";
+import { applyIncomeReceipt, addIncomeExpected, applyDebtPayment, addDebtPrincipal, appendVoiceNote, applyVoiceActionToState, filterTodosForProject } from "@shared/interactionHelpers";
 import { addRelationshipGoal, editRelationshipGoal, toggleRelationshipGoal, deleteRelationshipGoal } from "@shared/relationshipHelpers";
 
 const { mockDb } = vi.hoisted(() => {
@@ -75,6 +75,27 @@ describe("dashboard persistence", () => {
     expect(appendVoiceNote("", "Typed fallback")).toBe("Typed fallback");
   });
 
+  it("scopes Work todos to the active project", () => {
+    const todos = [
+      { id: 1, text: "Build hero", domain: "work", projectId: 1 },
+      { id: 2, text: "Billing module", domain: "work", projectId: 2 },
+      { id: 3, text: "Define rug mosaic deliverable", domain: "work", projectId: 3 },
+    ];
+    expect(filterTodosForProject(todos, 1, "Flame Guard site").map((todo) => todo.id)).toEqual([1]);
+    expect(filterTodosForProject(todos, 2, "Agency OS").map((todo) => todo.id)).toEqual([2]);
+    expect(filterTodosForProject(todos, 3, "Rug Mosaic").map((todo) => todo.id)).toEqual([3]);
+  });
+
+  it("applies structured voice actions with the supplied real date", () => {
+    const state = { todos: [], projects: [], debts: [{ id: 1, debt: 100, paid: 0, status: "Active" }], income: [], workouts: [], weight: [{ date: "2026-08-29", weight: 80 }], sleep: [], conditionLog: [] };
+    const afterWorkout = applyVoiceActionToState(state, { type: "log_workout", workoutType: "Run", duration: "30 min" }, "2026-08-30", "voice-1");
+    expect(afterWorkout.workouts[0]).toMatchObject({ date: "2026-08-30", type: "Run" });
+    const afterPayment = applyVoiceActionToState(afterWorkout, { type: "log_debt_payment", debtId: 1, amount: 25 }, "2026-08-30", "voice-2");
+    expect(afterPayment.debts[0].paid).toBe(25);
+    const afterWeight = applyVoiceActionToState(afterPayment, { type: "log_weight", weight: 79.5 }, "2026-08-30", "voice-3");
+    expect(afterWeight.weight).toContainEqual({ date: "2026-08-30", weight: 79.5 });
+  });
+
   it("protects AI advice endpoints behind authentication", async () => {
     const caller = appRouter.createCaller(context(null));
     await expect(caller.advice.performance({ context: "{}" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
@@ -87,3 +108,19 @@ describe("dashboard persistence", () => {
     await expect(caller.core.tasks.complete({ id: 1, completed: true })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 });
+
+
+describe("voice update and Daily Rewind boundaries", () => {
+  it("protects structured voice updates from unauthenticated access", async () => {
+    const caller = appRouter.createCaller(context(null));
+    await expect(caller.advice.voiceUpdate({ transcript: "I finished the report", context: "{}" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+
+  it("protects Daily Rewind status and controls from unauthenticated access", async () => {
+    const caller = appRouter.createCaller(context(null));
+    await expect(caller.dailyRewind.status()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(caller.dailyRewind.dismiss()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(caller.dailyRewind.complete()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+});
+
