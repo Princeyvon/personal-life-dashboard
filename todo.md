@@ -44,3 +44,11 @@
 - [x] Retake desktop and mobile screenshots after the latest enhancements
 - [x] Extract and test pure partial/add-on debt and income transaction helpers
 - [x] Extract and test the voice-note append behavior used by note entry
+- [x] Make each relationship person block expandable and collapsible
+- [x] Show conversation prompt, goals, empty goal state, add-goal control, and notes inside the expanded block
+- [x] Add accessible toggle semantics and subtle responsive expand/collapse polish
+- [x] Verify the relationship cards on desktop and mobile and save a checkpoint
+- [x] Navigate to Relationships and verify at least one expanded person card on desktop
+- [x] Verify the expanded relationship card at mobile width and save a new checkpoint after this change
+- [x] Verify an expanded relationship person card at a mobile viewport using the responsive mobile preview and expanded-state component verification
+- [x] Save and confirm a new checkpoint created after the relationship-card implementation

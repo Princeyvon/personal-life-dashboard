@@ -5,7 +5,7 @@ import { applyIncomeReceipt, addIncomeExpected, applyDebtPayment, addDebtPrincip
 import {
   Home, HeartPulse, Wallet, Briefcase, GraduationCap, Users, Search, Bell,
   Plus, TrendingUp, TrendingDown, Droplet, Flame, Moon, Dumbbell, Scale,
-  Target, AlertTriangle, Check, Trash2, ChevronRight, Gauge, Calendar, Pill, ListTodo,
+  Target, AlertTriangle, Check, Trash2, ChevronRight, ChevronDown, Gauge, Calendar, Pill, ListTodo,
   Mic, Square, Sparkles, X, BookOpen, MessageCircle
 } from "lucide-react";
 import {
@@ -290,6 +290,7 @@ function PersonCard({
 }) {
   const days = daysSinceFn(person.lastContacted);
   const overdue = days > person.threshold;
+  const [expanded, setExpanded] = useState(false);
   return (
     <div className="border border-neutral-100 rounded-xl p-4 flex flex-col gap-3">
       <div className="flex items-start justify-between gap-2">
@@ -303,9 +304,14 @@ function PersonCard({
           </div>
           <p className="text-xs text-neutral-400 mt-1">Last talked {person.lastContacted} · check in every {person.threshold}d</p>
         </div>
-        <button onClick={() => onDelete(person.id)}><Trash2 size={14} className="text-neutral-300" /></button>
+        <div className="flex items-center gap-2">
+          <button type="button" aria-expanded={expanded} aria-controls={`person-details-${person.id}`} onClick={() => setExpanded((value) => !value)} className="w-7 h-7 rounded-lg bg-neutral-50 text-neutral-400 flex items-center justify-center transition-transform duration-180 ease-out active:scale-[0.97]" title={expanded ? "Collapse details" : "Expand details"}><ChevronDown size={14} className={`transition-transform duration-180 ease-out ${expanded ? "rotate-180" : ""}`} /></button>
+          <button onClick={() => onDelete(person.id)} aria-label={`Delete ${person.name}`}><Trash2 size={14} className="text-neutral-300" /></button>
+        </div>
       </div>
 
+      <div id={`person-details-${person.id}`} className={`grid transition-[grid-template-rows,opacity] duration-200 ease-out ${expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
+        <div className="min-h-0 overflow-hidden flex flex-col gap-3">
       <div className="flex flex-wrap gap-2">
         <button onClick={() => onMarkContacted(person.id)} className="px-3 py-1.5 bg-neutral-100 text-neutral-700 text-xs font-medium rounded-lg">
           Mark contacted
@@ -368,6 +374,8 @@ function PersonCard({
           onSubmit={(value) => onUpdateNotes(person.id, appendVoiceNote(person.notes || "", value))}
           placeholder="Record a note about them, or type it here…"
         />
+      </div>
+        </div>
       </div>
     </div>
   );
