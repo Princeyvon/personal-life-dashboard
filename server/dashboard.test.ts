@@ -3,6 +3,7 @@ import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
 import { dashboardSnapshotSchema } from "@shared/dashboard";
 import { applyIncomeReceipt, addIncomeExpected, applyDebtPayment, addDebtPrincipal, appendVoiceNote } from "@shared/interactionHelpers";
+import { addRelationshipGoal, editRelationshipGoal, toggleRelationshipGoal, deleteRelationshipGoal } from "@shared/relationshipHelpers";
 
 const { mockDb } = vi.hoisted(() => {
   const where = vi.fn(async () => []);
@@ -36,6 +37,24 @@ describe("dashboard persistence", () => {
     await expect(caller.core.goals.complete({ id: 3, completed: true })).resolves.toEqual({ success: true });
     await expect(caller.core.notes.update({ id: 4, body: "Updated note" })).resolves.toEqual({ success: true });
     expect(mockDb.update).toHaveBeenCalled();
+  });
+
+  it("supports relationship goal editing and activity history", () => {
+    const person = { goals: [{ id: 1, text: "Call weekly", done: false }], activity: [] };
+    const added = addRelationshipGoal(person, { id: 2, text: "Plan a visit", done: false }, { id: 3, date: "2026-08-29", type: "Goal", text: "Added goal" });
+    expect(added.goals).toHaveLength(2);
+    const edited = editRelationshipGoal(added, 2, "Plan a visit soon", { id: 4, date: "2026-08-29", type: "Goal", text: "Edited goal" });
+    expect(edited.goals?.[1]?.text).toBe("Plan a visit soon");
+    const toggled = toggleRelationshipGoal(edited, 1, { id: 5, date: "2026-08-29", type: "Goal", text: "Completed goal" });
+    expect(toggled.goals?.[0]?.done).toBe(true);
+    const deleted = deleteRelationshipGoal(toggled, 2, { id: 6, date: "2026-08-29", type: "Goal", text: "Deleted goal" });
+    expect(deleted.goals).toHaveLength(1);
+    expect(deleted.activity).toHaveLength(4);
+  });
+
+  it("keeps relationship goals and activity valid in snapshots", () => {
+    const snapshot = dashboardSnapshotSchema.safeParse({ todos: [], income: [], debts: [], weight: [], workouts: [], sleep: [], conditionLog: [], diseases: [], projects: [], assignments: [], readings: [], classes: [], syllabusEvents: [], applications: [], recommenders: [], people: [{ id: 1, name: "Mom", type: "Family", lastContacted: "2026-08-29", threshold: 7, goals: [{ id: 1, text: "Call weekly", done: false }], notes: "", activity: [{ id: 2, date: "2026-08-29", type: "Note", text: "Added a voice note" }] }], voiceLog: [] });
+    expect(snapshot.success).toBe(true);
   });
 
   it("handles partial and add-on finance transactions", () => {

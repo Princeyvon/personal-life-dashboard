@@ -2,10 +2,11 @@ import React, { useState, useMemo, useRef, useEffect } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { applyIncomeReceipt, addIncomeExpected, applyDebtPayment, addDebtPrincipal, appendVoiceNote } from "@shared/interactionHelpers";
+import { addRelationshipGoal, editRelationshipGoal, toggleRelationshipGoal, deleteRelationshipGoal } from "@shared/relationshipHelpers";
 import {
   Home, HeartPulse, Wallet, Briefcase, GraduationCap, Users, Search, Bell,
   Plus, TrendingUp, TrendingDown, Droplet, Flame, Moon, Dumbbell, Scale,
-  Target, AlertTriangle, Check, Trash2, ChevronRight, ChevronDown, Gauge, Calendar, Pill, ListTodo,
+  Target, AlertTriangle, Check, Trash2, Pencil, ChevronRight, ChevronDown, Gauge, Calendar, Pill, ListTodo,
   Mic, Square, Sparkles, X, BookOpen, MessageCircle
 } from "lucide-react";
 import {
@@ -285,7 +286,7 @@ function MobileDock({ items, active, onChange }) {
 }
 
 function PersonCard({
-  person, daysSinceFn, onMarkContacted, onAddGoal, onToggleGoal, onDeleteGoal,
+  person, daysSinceFn, onMarkContacted, onAddGoal, onToggleGoal, onEditGoal, onDeleteGoal,
   onUpdateNotes, onGetTalkingPoints, onDelete, goalDraft, onGoalDraftChange, loading,
 }) {
   const days = daysSinceFn(person.lastContacted);
@@ -349,7 +350,7 @@ function PersonCard({
                 </span>
                 <span className={`text-xs ${g.done ? "text-neutral-400 line-through" : "text-neutral-700"}`}>{g.text}</span>
               </button>
-              <button onClick={() => onDeleteGoal(person.id, g.id)}><X size={12} className="text-neutral-300" /></button>
+              <div className="flex items-center gap-2"><button onClick={() => onEditGoal(person.id, g.id)} aria-label="Edit goal"><Pencil size={12} className="text-neutral-300 hover:text-neutral-700" /></button><button onClick={() => onDeleteGoal(person.id, g.id)} aria-label="Delete goal"><X size={12} className="text-neutral-300" /></button></div>
             </div>
           ))}
           {(!person.goals || person.goals.length === 0) && <p className="text-xs text-neutral-300">No goals yet.</p>}
@@ -374,6 +375,10 @@ function PersonCard({
           onSubmit={(value) => onUpdateNotes(person.id, appendVoiceNote(person.notes || "", value))}
           placeholder="Record a note about them, or type it here…"
         />
+      </div>
+      <div className="pt-1">
+        <p className="text-xs font-medium text-neutral-500 mb-1.5">Activity history</p>
+        {(person.activity || []).length === 0 ? <p className="text-xs text-neutral-300">No interactions recorded yet.</p> : <div className="flex flex-col gap-1.5">{person.activity.slice(0, 6).map((item) => <div key={item.id} className="flex items-start justify-between gap-3 text-xs"><span className="text-neutral-600">{item.text}</span><span className="text-neutral-300 shrink-0">{item.date}</span></div>)}</div>}
       </div>
         </div>
       </div>
@@ -789,9 +794,9 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
   // Relationships
   const [relationshipsSub, setRelationshipsSub] = useState("Family");
   const [people, setPeople] = useState([
-    { id: 1, name: "Mom", type: "Family", lastContacted: "2026-08-25", threshold: 7, goals: [], notes: "", talkingPoints: [] },
-    { id: 2, name: "Elvin", type: "Friend", lastContacted: "2026-08-10", threshold: 14, goals: [], notes: "", talkingPoints: [] },
-    { id: 3, name: "Nicole", type: "Friend", lastContacted: "2026-07-30", threshold: 14, goals: [], notes: "", talkingPoints: [] },
+    { id: 1, name: "Mom", type: "Family", lastContacted: "2026-08-25", threshold: 7, goals: [], notes: "", talkingPoints: [], activity: [] },
+    { id: 2, name: "Elvin", type: "Friend", lastContacted: "2026-08-10", threshold: 14, goals: [], notes: "", talkingPoints: [], activity: [] },
+    { id: 3, name: "Nicole", type: "Friend", lastContacted: "2026-07-30", threshold: 14, goals: [], notes: "", talkingPoints: [], activity: [] },
   ]);
   const daysSince = (d) => Math.floor((new Date("2026-08-28") - new Date(d)) / 86400000);
   const relationshipsFiltered = people.filter((p) =>
@@ -800,8 +805,11 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
     (p.type === "Colleague" || p.type === "Other")
   );
 
+  function addActivity(personId, type, text) {
+    setPeople((prev) => prev.map((p) => p.id !== personId ? p : { ...p, activity: [{ id: Date.now(), date: today, type, text }, ...(p.activity || [])] }));
+  }
   function markContacted(id) {
-    setPeople((prev) => prev.map((p) => p.id !== id ? p : { ...p, lastContacted: "2026-08-28" }));
+    setPeople((prev) => prev.map((p) => p.id !== id ? p : { ...p, lastContacted: today, activity: [{ id: Date.now(), date: today, type: "Contact", text: "Marked as contacted" }, ...(p.activity || [])] }));
   }
   function deletePerson(id) {
     setPeople((prev) => prev.filter((p) => p.id !== id));
@@ -809,7 +817,7 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
   const [newPerson, setNewPerson] = useState({ name: "", type: "Friend", threshold: "14" });
   function addPerson() {
     if (!newPerson.name) return;
-    setPeople([...people, { id: Date.now(), name: newPerson.name, type: newPerson.type, lastContacted: "2026-08-28", threshold: Number(newPerson.threshold) || 14, goals: [], notes: "", talkingPoints: [] }]);
+    setPeople([...people, { id: Date.now(), name: newPerson.name, type: newPerson.type, lastContacted: today, threshold: Number(newPerson.threshold) || 14, goals: [], notes: "", talkingPoints: [], activity: [{ id: Date.now() + 1, date: today, type: "Profile", text: "Added to relationships" }] }]);
     setNewPerson({ name: "", type: "Friend", threshold: "14" });
   }
 
@@ -821,17 +829,24 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
   function addGoal(personId) {
     const text = (newGoalText[personId] || "").trim();
     if (!text) return;
-    setPeople((prev) => prev.map((p) => p.id !== personId ? p : { ...p, goals: [...(p.goals || []), { id: Date.now(), text, done: false }] }));
+    setPeople((prev) => prev.map((p) => p.id !== personId ? p : addRelationshipGoal(p, { id: Date.now(), text, done: false }, { id: Date.now() + 1, date: today, type: "Goal", text: `Added goal: ${text}` })));
     setGoalDraft(personId, "");
   }
   function toggleGoal(personId, goalId) {
-    setPeople((prev) => prev.map((p) => p.id !== personId ? p : { ...p, goals: p.goals.map((g) => g.id !== goalId ? g : { ...g, done: !g.done }) }));
+    setPeople((prev) => prev.map((p) => p.id !== personId ? p : toggleRelationshipGoal(p, goalId, { id: Date.now(), date: today, type: "Goal", text: "Updated goal completion" })));
+  }
+  function editGoal(personId, goalId) {
+    const person = people.find((p) => p.id === personId);
+    const goal = person?.goals?.find((g) => g.id === goalId);
+    const text = window.prompt("Edit this goal", goal?.text || "")?.trim();
+    if (!text) return;
+    setPeople((prev) => prev.map((p) => p.id !== personId ? p : editRelationshipGoal(p, goalId, text, { id: Date.now(), date: today, type: "Goal", text: `Edited goal: ${text}` })));
   }
   function deleteGoal(personId, goalId) {
-    setPeople((prev) => prev.map((p) => p.id !== personId ? p : { ...p, goals: p.goals.filter((g) => g.id !== goalId) }));
+    setPeople((prev) => prev.map((p) => p.id !== personId ? p : deleteRelationshipGoal(p, goalId, { id: Date.now(), date: today, type: "Goal", text: "Deleted a goal" })));
   }
   function updateNotes(personId, notes) {
-    setPeople((prev) => prev.map((p) => p.id !== personId ? p : { ...p, notes }));
+    setPeople((prev) => prev.map((p) => p.id !== personId ? p : { ...p, notes, activity: [{ id: Date.now(), date: today, type: "Note", text: "Added a voice note" }, ...(p.activity || [])] }));
   }
 
   // AI conversation-starter suggestions per person
@@ -860,7 +875,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
       const raw = (data.content || []).map((b) => b.text || "").join("");
       const clean = raw.replace(/```json|```/g, "").trim();
       const parsed = JSON.parse(clean);
-      setPeople((prev) => prev.map((p) => p.id !== personId ? p : { ...p, talkingPoints: parsed.points || [] }));
+      setPeople((prev) => prev.map((p) => p.id !== personId ? p : { ...p, talkingPoints: parsed.points || [], activity: [{ id: Date.now(), date: today, type: "Conversation", text: "Refreshed conversation talking points" }, ...(p.activity || [])] }));
     } catch (err) {
       setPeople((prev) => prev.map((p) => p.id !== personId ? p : { ...p, talkingPoints: ["Couldn't reach the assistant just now — try again in a moment."] }));
     }
@@ -1928,6 +1943,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
                     onMarkContacted={markContacted}
                     onAddGoal={addGoal}
                     onToggleGoal={toggleGoal}
+                    onEditGoal={editGoal}
                     onDeleteGoal={deleteGoal}
                     onUpdateNotes={updateNotes}
                     onGetTalkingPoints={getTalkingPoints}

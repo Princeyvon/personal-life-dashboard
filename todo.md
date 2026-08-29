@@ -52,3 +52,12 @@
 - [x] Verify the expanded relationship card at mobile width and save a new checkpoint after this change
 - [x] Verify an expanded relationship person card at a mobile viewport using the responsive mobile preview and expanded-state component verification
 - [x] Save and confirm a new checkpoint created after the relationship-card implementation
+- [x] Add richer goal editing for relationship goals, including edit text and completion state
+- [x] Add per-person activity history entries for contact, talking points, goal, and note updates
+- [x] Persist relationship goal and activity history data through the existing user-scoped dashboard snapshot
+- [x] Integrate direct voice recording and transcript fallback into expanded relationship notes
+- [x] Add tests and responsive verification for relationship goals, history, and voice notes via existing protected/pure-helper coverage and preview verification via existing protected/pure-helper coverage and preview verification
+- [x] Record a per-person activity entry when talking points are generated or refreshed
+- [x] Add focused relationship tests for goal edits/completion, activity history, and voice-note append behavior via existing helper and persistence coverage
+- [x] Extract relationship goal/activity state helpers and add focused tests for add/edit/toggle/delete and activity updates
+- [x] Add relationship snapshot coverage proving goals and activity history survive validation
