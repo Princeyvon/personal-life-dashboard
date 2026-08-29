@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
 import { dashboardSnapshotSchema } from "@shared/dashboard";
+import { applyIncomeReceipt, addIncomeExpected, applyDebtPayment, addDebtPrincipal, appendVoiceNote } from "@shared/interactionHelpers";
 
 const { mockDb } = vi.hoisted(() => {
   const where = vi.fn(async () => []);
@@ -35,6 +36,24 @@ describe("dashboard persistence", () => {
     await expect(caller.core.goals.complete({ id: 3, completed: true })).resolves.toEqual({ success: true });
     await expect(caller.core.notes.update({ id: 4, body: "Updated note" })).resolves.toEqual({ success: true });
     expect(mockDb.update).toHaveBeenCalled();
+  });
+
+  it("handles partial and add-on finance transactions", () => {
+    expect(applyIncomeReceipt({ toReceive: 100, paid: 0 }, 40).paid).toBe(40);
+    expect(addIncomeExpected({ toReceive: 100 }, 25).toReceive).toBe(125);
+    expect(applyDebtPayment({ debt: 100, paid: 0, status: "Active" }, 40).paid).toBe(40);
+    expect(addDebtPrincipal({ debt: 100, status: "Paid" }, 25)).toMatchObject({ debt: 125, status: "Active" });
+  });
+
+  it("appends voice notes and keeps typed fallback content", () => {
+    expect(appendVoiceNote("Existing", " New note ")).toBe("Existing\nNew note");
+    expect(appendVoiceNote("", "Typed fallback")).toBe("Typed fallback");
+  });
+
+  it("protects AI advice endpoints behind authentication", async () => {
+    const caller = appRouter.createCaller(context(null));
+    await expect(caller.advice.performance({ context: "{}" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(caller.advice.coach({ message: "Help me plan my day" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
   it("rejects unauthenticated normalized edits and check-ins", async () => {

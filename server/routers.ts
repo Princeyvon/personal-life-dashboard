@@ -8,6 +8,7 @@ import { getDb } from "./db";
 import { routines, tasks, goals, notes } from "../drizzle/schema";
 import { getDashboardSnapshot, saveDashboardSnapshot } from "./db";
 import { dashboardSnapshotSchema } from "@shared/dashboard";
+import { invokeLLM } from "./_core/llm";
 
 export const appRouter = router({
     // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
@@ -20,6 +21,17 @@ export const appRouter = router({
       return {
         success: true,
       } as const;
+    }),
+  }),
+
+  advice: router({
+    performance: protectedProcedure.input(z.object({ context: z.string().max(12000) })).mutation(async ({ input }) => {
+      const response = await invokeLLM({ model: "gpt-5-mini", messages: [{ role: "system", content: "You are a practical personal performance advisor. Give concise, supportive, non-medical guidance based only on the supplied dashboard context. Use short headings and actionable next steps." }, { role: "user", content: input.context }] });
+      return { text: typeof response.choices?.[0]?.message?.content === "string" ? response.choices[0].message.content : "I couldn’t generate advice right now." };
+    }),
+    coach: protectedProcedure.input(z.object({ message: z.string().min(1).max(4000), context: z.string().max(12000).optional() })).mutation(async ({ input }) => {
+      const response = await invokeLLM({ model: "gpt-5-mini", messages: [{ role: "system", content: "You are an empathetic AI life coach inside a private personal dashboard. Be practical, warm, concise, and non-judgmental. Do not diagnose medical conditions or provide professional financial advice. Ask one clarifying question only when it would materially improve the next step." }, { role: "user", content: `${input.context ? `Dashboard context:\n${input.context}\n\n` : ""}${input.message}` }] });
+      return { text: typeof response.choices?.[0]?.message?.content === "string" ? response.choices[0].message.content : "I couldn’t respond right now." };
     }),
   }),
 

@@ -28,3 +28,19 @@
 - [x] Add authenticated update/edit mutations for normalized routines, tasks, goals, and notes with ownership checks
 - [x] Add tests covering normalized update/edit and check-in flows
 - [x] Add authenticated success-path and ownership-focused tests for normalized update and completion/check-in mutations via mocked authenticated and unauthenticated procedure coverage
+- [x] Make the existing notifications button open a working notification center with readable states
+- [x] Add partial debt payments and debt add-on transactions with updated balances
+- [x] Add partial income receipt and income add-on transactions with updated balances
+- [x] Add AI advice on overall performance and domain performance
+- [x] Add an AI life coach conversation flow inside the current dashboard style
+- [x] Make note entry voice-first wherever notes are added, with typed fallback
+- [x] Add tests for notification, debt/income transaction, AI advice, and voice-note flows via protected APIs and pure helper tests via protected API and build verification
+- [x] Re-run type checks, tests, build, and responsive screenshots
+- [x] Make health condition-log notes voice-first too, with typed fallback
+- [x] Add an explicit empty notification state
+- [x] Add visible retry/error states for performance advice and life-coach requests
+- [x] Send prior life-coach history for multi-turn context
+- [x] Add focused tests for transaction helpers, AI procedure protection, and voice-note behavior via protected API coverage and build verification
+- [x] Retake desktop and mobile screenshots after the latest enhancements
+- [x] Extract and test pure partial/add-on debt and income transaction helpers
+- [x] Extract and test the voice-note append behavior used by note entry

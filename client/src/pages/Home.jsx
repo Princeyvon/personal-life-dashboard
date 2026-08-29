@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
+import { applyIncomeReceipt, addIncomeExpected, applyDebtPayment, addDebtPrincipal, appendVoiceNote } from "@shared/interactionHelpers";
 import {
   Home, HeartPulse, Wallet, Briefcase, GraduationCap, Users, Search, Bell,
   Plus, TrendingUp, TrendingDown, Droplet, Flame, Moon, Dumbbell, Scale,
@@ -363,12 +364,9 @@ function PersonCard({
 
       <div>
         <p className="text-xs font-medium text-neutral-500 mb-1.5">Notes</p>
-        <textarea
-          value={person.notes || ""}
-          onChange={(e) => onUpdateNotes(person.id, e.target.value)}
-          placeholder="What's going on with them lately, shared interests, things to remember…"
-          rows={2}
-          className="w-full text-xs border border-neutral-200 rounded-lg px-3 py-2 resize-none"
+        <VoiceNoteBox
+          onSubmit={(value) => onUpdateNotes(person.id, appendVoiceNote(person.notes || "", value))}
+          placeholder="Record a note about them, or type it here…"
         />
       </div>
     </div>
@@ -388,6 +386,20 @@ export default function PersonalLifeOS() {
   const snapshotQuery = trpc.dashboard.load.useQuery(undefined, { enabled: isAuthenticated, retry: false });
   const saveSnapshot = trpc.dashboard.save.useMutation();
   const [snapshotReady, setSnapshotReady] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [performanceAdvice, setPerformanceAdvice] = useState("");
+  const [coachMessages, setCoachMessages] = useState([]);
+  const performanceAdviceMutation = trpc.advice.performance.useMutation();
+  const coachMutation = trpc.advice.coach.useMutation();
+
+  function askPerformanceAdvice() {
+    performanceAdviceMutation.mutate({ context: JSON.stringify({ overall, financeScore, fitnessScore, workScore, schoolScore, relationshipScore, unfinishedTodos: todos.filter((t) => !t.done), overduePeople: people.filter((p) => daysSince(p.lastContacted) > p.threshold) }) }, { onSuccess: (data) => setPerformanceAdvice(data.text), onError: () => setPerformanceAdvice("I couldn’t generate advice right now. Please try again.") });
+  }
+  function askLifeCoach(message) {
+    if (!message.trim()) return;
+    setCoachMessages((prev) => [...prev, { role: "user", text: message }]);
+    coachMutation.mutate({ message, context: JSON.stringify({ overall, unfinishedTodos: todos.filter((t) => !t.done), debts: debtRows, income: incomeRows, history: coachMessages }) }, { onSuccess: (data) => setCoachMessages((prev) => [...prev, { role: "assistant", text: data.text }]), onError: () => setCoachMessages((prev) => [...prev, { role: "assistant", text: "I couldn’t respond right now. Please try again." }]) });
+  }
 
   // Todos & reminders (freeform, not tied to a specific tracker record)
   const [todos, setTodos] = useState([
@@ -463,8 +475,28 @@ export default function PersonalLifeOS() {
   const [newDebt, setNewDebt] = useState({ name: "", debt: "" });
   function addDebt() {
     if (!newDebt.name || !newDebt.debt) return;
-    setDebts([...debts, { id: Date.now(), name: newDebt.name, debt: Number(newDebt.debt), paid: 0, date: "2026-08-28", status: "Active" }]);
+    setDebts([...debts, { id: Date.now(), name: newDebt.name, debt: Number(newDebt.debt), paid: 0, date: today, status: "Active" }]);
     setNewDebt({ name: "", debt: "" });
+  }
+  function receiveIncome(id) {
+    const amount = Number(window.prompt("How much did you receive? You can enter a partial amount.") || 0);
+    if (!amount || amount < 0) return;
+    setIncome((prev) => prev.map((r) => r.id === id ? { ...r, ...applyIncomeReceipt(r, amount) } : r));
+  }
+  function addIncomeAmount(id) {
+    const amount = Number(window.prompt("How much should be added to this expected income?") || 0);
+    if (!amount || amount < 0) return;
+    setIncome((prev) => prev.map((r) => r.id === id ? { ...r, ...addIncomeExpected(r, amount) } : r));
+  }
+  function payDebt(id) {
+    const amount = Number(window.prompt("How much would you like to pay? You can enter a partial amount.") || 0);
+    if (!amount || amount < 0) return;
+    setDebts((prev) => prev.map((d) => d.id === id ? { ...d, ...applyDebtPayment(d, amount) } : d));
+  }
+  function addDebtAmount(id) {
+    const amount = Number(window.prompt("How much should be added to this debt?") || 0);
+    if (!amount || amount < 0) return;
+    setDebts((prev) => prev.map((d) => d.id === id ? { ...d, ...addDebtPrincipal(d, amount) } : d));
   }
   const debtRows = debts.map((d) => ({ ...d, balance: d.debt - d.paid }));
   const filteredDebts = debtRows.filter((d) => debtView === "Table" ? true : d.status === debtView);
@@ -1029,8 +1061,15 @@ If nothing in the transcript maps to an action, return an empty actions array bu
             <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center">
               <Search size={16} className="text-neutral-400" />
             </div>
-            <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center">
-              <Bell size={16} className="text-neutral-400" />
+            <div className="relative">
+              <button onClick={() => setShowNotifications((v) => !v)} aria-label="Notifications" className="w-9 h-9 rounded-full bg-white flex items-center justify-center">
+                <Bell size={16} className="text-neutral-400" />
+              </button>
+              {(nudges.length > 0) && <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-lime-400 text-[10px] text-neutral-950 flex items-center justify-center">{nudges.length}</span>}
+              {showNotifications && <div className="absolute right-0 top-11 z-30 w-72 rounded-2xl bg-white p-4 shadow-xl border border-neutral-100">
+                <div className="flex items-center justify-between mb-3"><p className="text-sm font-semibold text-neutral-900">Notifications</p><button onClick={() => setShowNotifications(false)} className="text-xs text-neutral-400">Close</button></div>
+                <div className="flex flex-col gap-2">{nudges.length === 0 && upcomingTodos.length === 0 && <div className="rounded-xl bg-neutral-50 px-3 py-3 text-xs text-neutral-500">You’re all caught up. No new notifications.</div>}{nudges.map((n, i) => <div key={i} className="rounded-xl bg-lime-50 px-3 py-2 text-xs text-lime-900">{n.text}</div>)}{upcomingTodos.slice(0, 3).map((t) => <div key={t.id} className="rounded-xl bg-neutral-50 px-3 py-2 text-xs text-neutral-700">Upcoming: {t.text} · {t.due}</div>)}</div>
+              </div>}
             </div>
           </div>
         </div>
@@ -1091,6 +1130,13 @@ If nothing in the transcript maps to an action, return an empty actions array bu
                           <p className="text-sm text-lime-900">{n.text}</p>
                         </div>
                       ))}
+                      <button onClick={askPerformanceAdvice} disabled={performanceAdviceMutation.isPending} className="px-3 py-2 bg-neutral-950 text-white text-xs font-medium rounded-lg">{performanceAdviceMutation.isPending ? "Reviewing…" : "Get advice on my performance"}</button>
+                      {performanceAdvice && <div className="bg-neutral-50 rounded-xl p-3 text-sm text-neutral-700 whitespace-pre-wrap">{performanceAdvice}</div>}
+                      <div className="pt-2 border-t border-neutral-100">
+                        <p className="text-xs font-medium text-neutral-500 mb-2">Ask your AI life coach</p>
+                        <div className="flex gap-2"><input id="life-coach-input" placeholder="What should I focus on today?" className="flex-1 text-xs border border-neutral-200 rounded-lg px-3 py-2" /><button onClick={() => { const el = document.getElementById("life-coach-input"); askLifeCoach(el?.value || ""); if (el) el.value = ""; }} disabled={coachMutation.isPending} className="px-3 py-2 bg-lime-400 text-neutral-950 text-xs font-medium rounded-lg">Ask</button></div>
+                        {coachMessages.slice(-2).map((m, i) => <div key={i} className={`mt-2 rounded-xl px-3 py-2 text-xs ${m.role === "user" ? "bg-neutral-950 text-white" : "bg-lime-50 text-lime-900"}`}>{m.text}</div>)}
+                      </div>
                     </div>
                   </SectionCard>
                   <SectionCard title="Net position">
@@ -1221,7 +1267,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
                 <tbody>
                   {filteredIncome.map((r) => (
                     <tr key={r.id} className="border-t border-neutral-100">
-                      <td className="py-3 text-neutral-800">{r.source}</td>
+                      <td className="py-3 text-neutral-800"><div>{r.source}</div><div className="flex gap-1 mt-1"><button onClick={() => receiveIncome(r.id)} className="text-[11px] text-emerald-600">Receive</button><button onClick={() => addIncomeAmount(r.id)} className="text-[11px] text-blue-600">Add on</button></div></td>
                       <td className="py-3 text-neutral-600">{fmt(r.toReceive)}</td>
                       <td className="py-3 text-neutral-600">{fmt(r.paid)}</td>
                       <td className="py-3 text-neutral-600">{fmt(r.remaining)}</td>
@@ -1270,7 +1316,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
                     <tbody>
                       {filteredDebts.map((d) => (
                         <tr key={d.id} className="border-t border-neutral-100">
-                          <td className="py-3 text-neutral-800">{d.name}</td>
+                          <td className="py-3 text-neutral-800"><div>{d.name}</div><div className="flex gap-1 mt-1"><button onClick={() => payDebt(d.id)} className="text-[11px] text-emerald-600">Pay</button><button onClick={() => addDebtAmount(d.id)} className="text-[11px] text-rose-600">Add on</button></div></td>
                           <td className="py-3 text-neutral-600">{fmt(d.debt)}</td>
                           <td className="py-3 text-neutral-600">{fmt(d.paid)}</td>
                           <td className="py-3 text-neutral-600">{fmt(d.balance)}</td>
@@ -1479,7 +1525,7 @@ If nothing in the transcript maps to an action, return an empty actions array bu
 
                 <SectionCard title="Condition log">
                   <div className="flex flex-col sm:flex-row gap-2 mb-4">
-                    <input placeholder="How are you feeling today?" value={newCondition.note} onChange={(e) => setNewCondition({ ...newCondition, note: e.target.value })} className="flex-1 text-sm border border-neutral-200 rounded-lg px-3 py-2" />
+                    <div className="flex-1"><VoiceNoteBox onSubmit={(value) => setNewCondition({ ...newCondition, note: value })} placeholder="Record how you are feeling today, or type it here…" /></div>
                     <label className="flex items-center gap-2 text-sm text-neutral-600 px-2">
                       <input type="checkbox" checked={newCondition.medTaken} onChange={(e) => setNewCondition({ ...newCondition, medTaken: e.target.checked })} />
                       Took medication
