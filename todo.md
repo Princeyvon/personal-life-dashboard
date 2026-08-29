@@ -1,0 +1,30 @@
+# Project TODO
+
+- [x] Recreate the supplied Personal Life Dashboard JSX as the foundation of the app
+- [x] Establish an elegant, responsive visual system for desktop and mobile
+- [x] Protect dashboard access with Manus sign-in
+- [x] Isolate all personal data by authenticated user
+- [x] Add cloud database schema for routines, tasks, goals, and notes
+- [x] Add typed server procedures for loading and saving dashboard data
+- [x] Add reliable edit, complete/check-in, and delete interactions
+- [x] Add at-a-glance dashboard summary metrics and recent activity
+- [x] Add loading, empty, error, and mobile-friendly states
+- [x] Decide and document whether optional scheduled reminders are included — deferred to a later pass so the current UI remains unchanged
+- [x] Add unit tests for the authenticated persistence boundary
+- [x] Run type checks, tests, and production build
+- [x] Verify desktop and mobile layouts with rendered screenshots
+- [x] Save the final project checkpoint for publishing
+- [x] Preserve the supplied UI structure, styling, navigation, and visual language; limit changes to framework wiring and small usability/responsive fixes
+- [x] Avoid redesigning or materially restyling the current dashboard
+- [x] Resolve TypeScript compatibility errors from the untyped supplied JSX while preserving its runtime UI
+- [x] Add normalized user-owned tables for routines, tasks, goals, and notes, or document a production-ready schema decision
+- [x] Replace raw JSON snapshot persistence with validated typed dashboard contracts and typed core mutations
+- [x] Add persisted CRUD/check-in mutation handling with visible save errors via typed cloud snapshot autosave
+- [x] Document the deferred reminder decision in project documentation
+- [x] Remove TypeScript suppression and type the ported dashboard module; scaffold type-check passes without ts-nocheck
+- [x] Define concrete schemas for required core dashboard items instead of unknown-only arrays
+- [x] Add dedicated authenticated CRUD/check-in procedures for normalized core entities, while retaining snapshot compatibility for the supplied UI
+- [x] Document why the supplied UI currently uses a compatibility snapshot and how normalized entities support future migrations
+- [x] Add authenticated update/edit mutations for normalized routines, tasks, goals, and notes with ownership checks
+- [x] Add tests covering normalized update/edit and check-in flows
+- [x] Add authenticated success-path and ownership-focused tests for normalized update and completion/check-in mutations via mocked authenticated and unauthenticated procedure coverage
