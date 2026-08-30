@@ -5,7 +5,7 @@ import CalendarWorkspace from "@/components/CalendarWorkspace";
 import { applyIncomeReceipt, addIncomeExpected, applyDebtPayment, addDebtPrincipal, appendVoiceNote, buildFinanceInsights, applyVoiceActionToState, filterTodosForProject } from "@shared/interactionHelpers";
 import { addRelationshipGoal, editRelationshipGoal, toggleRelationshipGoal, deleteRelationshipGoal } from "@shared/relationshipHelpers";
 import {
-  Home, HeartPulse, Wallet, Briefcase, GraduationCap, Users, Search, Bell,
+  Home, HeartPulse, Wallet, Briefcase, GraduationCap, Users, Bell,
   Plus, TrendingUp, TrendingDown, Droplet, Flame, Moon, Dumbbell, Scale,
   Target, AlertTriangle, Check, Trash2, Pencil, ChevronRight, ChevronLeft, ChevronDown, Gauge, Calendar, RefreshCw, MapPin, Pill, ListTodo,
   Mic, Square, Sparkles, X, BookOpen, MessageCircle
@@ -999,6 +999,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
   // ---------- generic AI voice-note update pipeline ----------
   const [voiceLog, setVoiceLog] = useState([]);
   const [voiceLoading, setVoiceLoading] = useState(false);
+  const [showGlobalVoiceLog, setShowGlobalVoiceLog] = useState(false);
 
   function applyAIActions(actions) {
     let next = { todos, projects, debts, income, workouts, weight, sleep, conditionLog };
@@ -1020,7 +1021,15 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
     const trimmed = transcript.trim();
     if (!trimmed || voiceUpdateMutation.isPending) return false;
     setVoiceLoading(true);
-    const context = JSON.stringify({ projects: projects.map((p) => ({ id: p.id, name: p.name, tasks: p.tasks.map((t) => ({ id: t.id, name: t.name, status: t.status })) })), todos: todos.filter((t) => !t.done).map((t) => ({ id: t.id, text: t.text, due: t.due, domain: t.domain })), debts: debts.map((d) => ({ id: d.id, name: d.name, balance: d.debt - d.paid })), income: income.map((r) => ({ id: r.id, source: r.source, remaining: r.toReceive - r.paid })) });
+    const context = JSON.stringify({
+      page: { tab, subpage: tab === "home" ? homeSub : tab === "health" ? healthSub : tab === "finance" ? financeSub : tab === "school" ? schoolSub : tab === "relationships" ? relationshipsSub : tab === "work" ? currentProject?.name : null, date: today },
+      instructions: "Use the current page and subpage as the primary context. Decide whether this note should create or complete a task, update a tracker, add a finance transaction, update a workout/health log, or add a note. Only return actions supported by the existing dashboard data.",
+      projects: projects.map((p) => ({ id: p.id, name: p.name, tasks: p.tasks.map((t) => ({ id: t.id, name: t.name, status: t.status })) })),
+      todos: todos.filter((t) => !t.done).map((t) => ({ id: t.id, text: t.text, due: t.due, domain: t.domain })),
+      debts: debts.map((d) => ({ id: d.id, name: d.name, balance: d.debt - d.paid })),
+      income: income.map((r) => ({ id: r.id, source: r.source, remaining: r.toReceive - r.paid })),
+      workouts, weight, sleep, conditionLog,
+    });
     try {
       const result = await voiceUpdateMutation.mutateAsync({ transcript: trimmed, context });
       applyAIActions(result.actions);
@@ -1142,6 +1151,24 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
 
   return (
     <div className="dashboard-shell flex min-h-screen font-sans">
+      {showGlobalVoiceLog && (
+        <div className="fixed inset-0 z-50 bg-neutral-950/45 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="global-voice-log-title">
+          <div className="dashboard-card w-full max-w-xl rounded-[1.5rem] bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4 mb-2">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-lime-700">Voice log</p>
+                <h2 id="global-voice-log-title" className="text-xl font-semibold tracking-tight text-neutral-950">Tell your dashboard what changed.</h2>
+                <p className="text-sm text-neutral-500 mt-1">I’ll analyse this note in the context of {tab === "home" ? homeSub : domainMeta[tab]?.label || tab}{tab === "home" ? "" : ` · ${tab === "health" ? healthSub : tab === "finance" ? financeSub : tab === "school" ? schoolSub : tab === "relationships" ? relationshipsSub : tab === "work" ? currentProject?.name || "Projects" : "Today"}`}, then update the relevant records.</p>
+              </div>
+              <button type="button" aria-label="Close voice log" onClick={() => setShowGlobalVoiceLog(false)} className="dashboard-action w-9 h-9 rounded-full bg-neutral-100 text-neutral-500 flex items-center justify-center"><X size={16} /></button>
+            </div>
+            <div className="mt-5 rounded-[1.2rem] border border-neutral-100 bg-neutral-50/70 p-4">
+              <VoiceNoteBox onSubmit={async (value) => { const processed = await processVoiceNote(value); if (processed) setShowGlobalVoiceLog(false); }} loading={voiceLoading} placeholder="Say what happened, what needs doing, or what should be updated…" />
+            </div>
+            <p className="mt-3 text-xs text-neutral-400">Examples: “Mark my gym session complete”, “Add a task to submit my Masters transcript”, or “I paid Nicole 50,000.”</p>
+          </div>
+        </div>
+      )}
       {showRewind && (
         <div className="fixed inset-0 z-50 bg-neutral-950/35 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="daily-rewind-title">
           <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-neutral-200 p-6">
@@ -1192,9 +1219,10 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
           </div>
           <div className="flex items-center gap-3 shrink-0">
             {tab !== "home" && <IdeaButton loading={ideasMutation.isPending && ideaResult?.section === (domainMeta[tab]?.label || tab)} onClick={() => askIdeas(domainMeta[tab]?.label || tab, JSON.stringify({ tab, todos, income: incomeRows, debts: debtRows, applications, assignments, people }))} />}
-            <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center">
-              <Search size={16} className="text-neutral-400" />
-            </div>
+            <button type="button" aria-label="Open voice log" onClick={() => setShowGlobalVoiceLog(true)} className={`dashboard-action relative w-9 h-9 rounded-full flex items-center justify-center ${voiceLoading ? "bg-lime-400 text-neutral-950" : "bg-white text-neutral-500"}`}>
+              {voiceLoading ? <span className="absolute inset-0 rounded-full border-2 border-neutral-950/20 border-t-neutral-950 animate-spin" /> : null}
+              <Mic size={16} className="relative" />
+            </button>
             <div className="relative">
               <button onClick={() => setShowNotifications((v) => !v)} aria-label="Notifications" className="w-9 h-9 rounded-full bg-white flex items-center justify-center">
                 <Bell size={16} className="text-neutral-400" />
