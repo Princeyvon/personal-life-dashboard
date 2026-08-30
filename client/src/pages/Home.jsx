@@ -8,7 +8,7 @@ import {
   Home, HeartPulse, Wallet, Briefcase, GraduationCap, Users, Search, Bell,
   Plus, TrendingUp, TrendingDown, Droplet, Flame, Moon, Dumbbell, Scale,
   Target, AlertTriangle, Check, Trash2, Pencil, ChevronRight, ChevronLeft, ChevronDown, Gauge, Calendar, RefreshCw, MapPin, Pill, ListTodo,
-  Mic, Square, Sparkles, X, BookOpen, MessageCircle
+  Mic, Square, Sparkles, X, BookOpen, MessageCircle, LogOut
 } from "lucide-react";
 import {
   AreaChart, Area, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -405,7 +405,7 @@ export default function PersonalLifeOS() {
   const [financeSub, setFinanceSub] = useState("income");
   const [schoolSub, setSchoolSub] = useState("Georgetown");
   const today = new Date().toISOString().slice(0, 10);
-  const { user, loading: authLoading, isAuthenticated, login, error: authError } = useAuth();
+  const { user, loading: authLoading, isAuthenticated, login, logout, error: authError } = useAuth();
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState("");
   async function handlePinLogin(event) {
@@ -1171,6 +1171,9 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
                 <div className="flex flex-col gap-2">{nudges.length === 0 && upcomingTodos.length === 0 && <div className="rounded-xl bg-neutral-50 px-3 py-3 text-xs text-neutral-500">You’re all caught up. No new notifications.</div>}{nudges.map((n, i) => <button type="button" key={i} onClick={() => openNotification(n.target, n.sub)} className="text-left rounded-xl bg-lime-50 px-3 py-2 text-xs text-lime-900 transition-transform duration-150 hover:-translate-y-0.5 active:scale-[0.99]">{n.text}<span className="block text-[10px] text-lime-700 mt-0.5">Open {domainMeta[n.target]?.label || n.target}</span></button>)}{upcomingTodos.slice(0, 3).map((t) => <button type="button" key={t.id} onClick={() => { const destination = notificationTargetForTodo(t); openNotification(destination.target, destination.sub); }} className="text-left rounded-xl bg-neutral-50 px-3 py-2 text-xs text-neutral-700 transition-transform duration-150 hover:-translate-y-0.5 active:scale-[0.99]">Upcoming: {t.text} · {t.due}<span className="block text-[10px] text-neutral-400 mt-0.5">Open related section</span></button>)}</div>
               </div>}
             </div>
+            <button type="button" onClick={() => logout()} aria-label="Log out" title="Log out" className="w-9 h-9 rounded-full bg-white flex items-center justify-center text-neutral-400 hover:text-neutral-900 transition-colors">
+              <LogOut size={16} />
+            </button>
           </div>
         </div>
 
