@@ -42,7 +42,7 @@ function fmt(n) {
 function StatCard({ icon: Icon, iconColor, label, value, delta, positive }) {
   const c = colorMap[iconColor];
   return (
-    <div className="bg-white rounded-2xl p-5 flex-1 min-w-[150px]">
+    <div className="dashboard-card bg-white rounded-[1.35rem] p-5 flex-1 min-w-[150px]">
       <div className="flex items-center justify-between mb-4">
         <span className="text-sm text-neutral-500">{label}</span>
         <div className={`w-8 h-8 rounded-full ${c.badgeBg} flex items-center justify-center`}>
@@ -106,13 +106,13 @@ function ScoreRing({ label, score, colorKey }) {
 
 function SectionCard({ title, right, children }) {
   return (
-    <div className="bg-white rounded-2xl p-5">
+    <section className="dashboard-card bg-white rounded-[1.35rem] p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-base font-semibold text-neutral-900">{title}</h3>
         {right}
       </div>
       {children}
-    </div>
+    </section>
   );
 }
 
@@ -140,7 +140,7 @@ function ViewTabs({ views, active, onChange }) {
 
 function SubTabs({ tabs, active, onChange }) {
   return (
-    <div className="flex gap-2 flex-wrap">
+    <div className="dashboard-tabbar flex gap-2 flex-wrap rounded-full">
       {tabs.map((t) => (
         <button
           key={t.key}
@@ -405,6 +405,19 @@ export default function PersonalLifeOS() {
   const [financeSub, setFinanceSub] = useState("income");
   const [schoolSub, setSchoolSub] = useState("Georgetown");
   const today = new Date().toISOString().slice(0, 10);
+  const formattedToday = new Date(`${today}T00:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  const todayCategories = [
+    { key: "gym", label: "Gym", domain: "health", icon: Dumbbell, color: "emerald", defaultText: "Complete today's workout" },
+    { key: "food", label: "Food", domain: "health", icon: Droplet, color: "amber", defaultText: "Plan balanced meals and hydrate" },
+    { key: "classes", label: "Classes", domain: "school", icon: BookOpen, color: "violet", defaultText: "Stay on top of classwork" },
+    { key: "masters", label: "Masters", domain: "school", icon: GraduationCap, color: "blue", defaultText: "Move one application task forward" },
+    { key: "work", label: "Work", domain: "work", icon: Briefcase, color: "amber", defaultText: "Make progress on your priority project" },
+    { key: "money", label: "Money", domain: "finance", icon: Wallet, color: "blue", defaultText: "Review today's money priorities" },
+    { key: "relationships", label: "People", domain: "relationships", icon: Users, color: "rose", defaultText: "Reach out to someone important" },
+  ];
+  const [todayPlan, setTodayPlan] = useState({});
+  const [todayDraft, setTodayDraft] = useState({});
+  const [debtAction, setDebtAction] = useState(null);
   const { user, loading: authLoading, isAuthenticated } = useAuth({ redirectOnUnauthenticated: true });
   const snapshotQuery = trpc.dashboard.load.useQuery(undefined, { enabled: isAuthenticated, retry: false });
   const saveSnapshot = trpc.dashboard.save.useMutation();
@@ -545,15 +558,14 @@ export default function PersonalLifeOS() {
     if (!amount || amount < 0) return;
     setIncome((prev) => prev.map((r) => r.id === id ? { ...r, ...addIncomeExpected(r, amount) } : r));
   }
-  function payDebt(id) {
-    const amount = Number(window.prompt("How much would you like to pay? You can enter a partial amount.") || 0);
-    if (!amount || amount < 0) return;
-    setDebts((prev) => prev.map((d) => d.id === id ? { ...d, ...applyDebtPayment(d, amount) } : d));
-  }
-  function addDebtAmount(id) {
-    const amount = Number(window.prompt("How much should be added to this debt?") || 0);
-    if (!amount || amount < 0) return;
-    setDebts((prev) => prev.map((d) => d.id === id ? { ...d, ...addDebtPrincipal(d, amount) } : d));
+  function submitDebtAction() {
+    const amount = Number(debtAction?.amount || 0);
+    if (!debtAction?.id || !Number.isFinite(amount) || amount <= 0) return;
+    setDebts((prev) => prev.map((d) => {
+      if (d.id !== debtAction.id) return d;
+      return { ...d, ...(debtAction.type === "pay" ? applyDebtPayment(d, amount) : addDebtPrincipal(d, amount)) };
+    }));
+    setDebtAction(null);
   }
   const debtRows = debts.map((d) => ({ ...d, balance: d.debt - d.paid }));
   const filteredDebts = debtRows.filter((d) => debtView === "Table" ? true : d.status === debtView);
@@ -776,6 +788,10 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
     setAssignments([...assignments, { id: Date.now(), title: newAssignment.title, course: newAssignment.course || "General", due: newAssignment.due || "2026-09-01", status: "Not Started", grade: null, program: schoolSub }]);
     setNewAssignment({ title: "", course: "", due: "" });
   }
+  function cycleAssignmentStatus(id) {
+    const order = ["Not Started", "In Progress", "Submitted", "Graded"];
+    setAssignments((prev) => prev.map((item) => String(item.id) !== String(id) ? item : { ...item, status: order[(order.indexOf(item.status) + 1) % order.length] }));
+  }
   const [newReading, setNewReading] = useState({ title: "", course: "" });
   function addReading() {
     if (!newReading.title) return;
@@ -821,7 +837,7 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
   }
   function cycleApplicationStatus(id) {
     const order = ["Not Started", "In Progress", "Submitted", "Received"];
-    setApplications((prev) => prev.map((a) => a.id !== id ? a : { ...a, status: order[(order.indexOf(a.status) + 1) % order.length] }));
+    setApplications((prev) => prev.map((a) => String(a.id) !== String(id) ? a : { ...a, status: order[(order.indexOf(a.status) + 1) % order.length] }));
   }
   function deleteApplication(id) {
     setApplications((prev) => prev.filter((a) => a.id !== id));
@@ -842,6 +858,51 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
     setRecommenders((prev) => prev.filter((r) => r.id !== id));
   }
   const mastersTodos = todos.filter((t) => t.domain === "school");
+
+  const todayLinkedTodos = (domain, extraFilter = () => true) => todayTodos.filter((todo) => todo.domain === domain && extraFilter(todo)).map((todo) => ({ ...todo, source: "todo" }));
+  const todayCardItems = useMemo(() => {
+    const sources = {
+      gym: [
+        ...todayLinkedTodos("health", (todo) => /gym|workout|exercise|run|lift/i.test(todo.text)),
+        ...workouts.filter((workout) => workout.date === today || workout.date === "Aug 28").map((workout) => ({ id: `workout-${workout.id}`, text: `${workout.type}${workout.duration ? ` · ${workout.duration}` : ""}`, done: true, source: "workout" })),
+      ],
+      food: [...todayLinkedTodos("health", (todo) => /food|meal|eat|water|hydrate|nutrition/i.test(todo.text))],
+      classes: [...todayLinkedTodos("school", (todo) => !/application|masters|recommend/i.test(todo.text)), ...assignments.filter((item) => item.due === today && item.status !== "Graded").map((item) => ({ id: `assignment-${item.id}`, text: `${item.title}${item.course ? ` · ${item.course}` : ""}`, done: item.status === "Submitted" || item.status === "Graded", source: "assignment" }))],
+      masters: [...todayLinkedTodos("school", (todo) => /application|masters|recommend/i.test(todo.text)), ...applications.filter((item) => item.deadline === today && item.status !== "Received").map((item) => ({ id: `application-${item.id}`, text: `Application · ${item.school}`, done: item.status === "Submitted" || item.status === "Received", source: "application" }))],
+      work: todayLinkedTodos("work"),
+      money: todayLinkedTodos("finance"),
+      relationships: todayLinkedTodos("relationships"),
+    };
+    return todayCategories.reduce((result, category) => {
+      const custom = todayPlan[category.key] || [];
+      const items = [...sources[category.key], ...custom].filter((item, index, list) => list.findIndex((candidate) => String(candidate.id) === String(item.id)) === index);
+      result[category.key] = items.length ? items : [{ id: `${category.key}-default`, text: category.defaultText, done: false, source: "plan" }];
+      return result;
+    }, {});
+  }, [todayPlan, todayTodos, workouts, assignments, applications]);
+  function toggleTodayItem(categoryKey, item) {
+    if (item.source === "todo") return toggleTodo(item.id);
+    if (item.source === "assignment") return cycleAssignmentStatus(String(item.id).replace("assignment-", ""));
+    if (item.source === "application") return cycleApplicationStatus(String(item.id).replace("application-", ""));
+    if (item.source === "workout") return;
+    setTodayPlan((prev) => {
+      const existing = prev[categoryKey] || [];
+      const next = existing.some((entry) => entry.id === item.id)
+        ? existing.map((entry) => entry.id === item.id ? { ...entry, done: !entry.done } : entry)
+        : [...existing, { ...item, source: "plan", done: !item.done }];
+      return { ...prev, [categoryKey]: next };
+    });
+  }
+  function addTodayPlanItem(categoryKey) {
+    const text = (todayDraft[categoryKey] || "").trim();
+    if (!text) return;
+    setTodayPlan((prev) => ({ ...prev, [categoryKey]: [...(prev[categoryKey] || []), { id: `plan-${Date.now()}`, text, done: false, source: "plan" }] }));
+    setTodayDraft((prev) => ({ ...prev, [categoryKey]: "" }));
+  }
+  const todayOverall = Math.round(todayCategories.reduce((sum, category) => {
+    const items = todayCardItems[category.key] || [];
+    return sum + (items.length ? items.filter((item) => item.done).length / items.length * 100 : 0);
+  }, 0) / todayCategories.length);
 
   // Relationships
   const [relationshipsSub, setRelationshipsSub] = useState("Family");
@@ -1058,16 +1119,17 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
       if (saved.recommenders) setRecommenders(saved.recommenders);
       if (saved.people) setPeople(saved.people);
       if (saved.voiceLog) setVoiceLog(saved.voiceLog);
+      if (saved.todayPlan) setTodayPlan(saved.todayPlan);
     }
     setSnapshotReady(true);
   }, [isAuthenticated, snapshotQuery.isLoading, snapshotQuery.data, snapshotReady]);
 
   useEffect(() => {
     if (!isAuthenticated || !snapshotReady) return;
-    const payload = { todos, income, debts, weight, workouts, sleep, conditionLog, diseases, projects, assignments, readings, classes, syllabusEvents, applications, recommenders, people, voiceLog };
+    const payload = { todos, income, debts, weight, workouts, sleep, conditionLog, diseases, projects, assignments, readings, classes, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan };
     const timer = window.setTimeout(() => saveSnapshot.mutate(payload), 500);
     return () => window.clearTimeout(timer);
-  }, [isAuthenticated, snapshotReady, todos, income, debts, weight, workouts, sleep, conditionLog, diseases, projects, assignments, readings, classes, syllabusEvents, applications, recommenders, people, voiceLog]);
+  }, [isAuthenticated, snapshotReady, todos, income, debts, weight, workouts, sleep, conditionLog, diseases, projects, assignments, readings, classes, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan]);
 
   if (authLoading || (isAuthenticated && snapshotQuery.isLoading)) {
     return <div className="min-h-screen bg-neutral-100 flex items-center justify-center text-sm text-neutral-500">Loading your workspace…</div>;
@@ -1078,7 +1140,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
   }
 
   return (
-    <div className="flex min-h-screen bg-neutral-100 font-sans">
+    <div className="dashboard-shell flex min-h-screen font-sans">
       {showRewind && (
         <div className="fixed inset-0 z-50 bg-neutral-950/35 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="daily-rewind-title">
           <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-neutral-200 p-6">
@@ -1096,7 +1158,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
       )}
       {saveSnapshot.isError && <div className="fixed top-3 right-3 z-50 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 shadow-sm">Your latest change could not be saved. Please retry.</div>}
       {/* sidebar — desktop only */}
-      <div className="hidden md:flex fixed inset-y-0 left-0 z-20 w-20 bg-neutral-950 flex-col items-center py-6 gap-2 overflow-hidden">
+      <nav aria-label="Primary" className="dashboard-sidebar hidden md:flex fixed inset-y-0 left-0 z-20 w-20 flex-col items-center py-6 gap-2 overflow-hidden">
         <div className="w-9 h-9 rounded-xl bg-lime-400 flex items-center justify-center mb-6">
           <Gauge size={18} className="text-neutral-950" />
         </div>
@@ -1111,20 +1173,20 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
             <Icon size={19} />
           </button>
         ))}
-      </div>
+      </nav>
 
       {/* dock — mobile only */}
       <MobileDock items={navItems} active={tab} onChange={setTab} />
 
       {/* main */}
-      <div className="flex-1 md:ml-20 p-4 md:p-6 overflow-y-auto pb-28 md:pb-6 min-w-0">
+      <main id="main-content" className="dashboard-main flex-1 md:ml-20 p-4 md:p-6 overflow-y-auto pb-28 md:pb-6 min-w-0">
         <div className="flex items-center justify-between mb-6 gap-3">
           <div>
             <h1 className="text-lg md:text-xl font-semibold text-neutral-900">
               {tab === "home" ? "Good morning" : domainMeta[tab]?.label}
             </h1>
             <p className="text-sm text-neutral-500">
-              {tab === "home" ? "Here's where things stand across your week." : "Friday, August 28, 2026"}
+              {tab === "home" ? "Here's where things stand across your week." : formattedToday}
             </p>
           </div>
           <div className="flex items-center gap-3 shrink-0">
@@ -1148,10 +1210,62 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
         {tab === "home" && (
           <div className="flex flex-col gap-5">
             <SubTabs
-              tabs={[{ key: "dashboard", label: "Dashboard" }, { key: "todo", label: "Todo" }, { key: "upcoming", label: "Upcoming" }]}
+              tabs={[{ key: "dashboard", label: "Dashboard" }, { key: "today", label: "Today" }, { key: "todo", label: "Todo" }, { key: "upcoming", label: "Upcoming" }]}
               active={homeSub}
               onChange={setHomeSub}
             />
+
+            {homeSub === "today" && (
+              <div className="flex flex-col gap-5">
+                <div className="bg-neutral-950 rounded-2xl p-6 text-white flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+                  <div>
+                    <p className="text-sm text-neutral-400 mb-1">Your focus for today</p>
+                    <h2 className="text-2xl font-semibold tracking-tight">One clear step in every part of life.</h2>
+                    <p className="text-sm text-neutral-400 mt-2">{todayCategories.reduce((sum, category) => sum + (todayCardItems[category.key] || []).filter((item) => item.done).length, 0)} completed items across {todayCategories.length} areas</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <ScoreRing label="Today" score={todayOverall} colorKey="lime" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                  {todayCategories.map((category) => {
+                    const Icon = category.icon;
+                    const c = colorMap[category.color];
+                    const items = todayCardItems[category.key] || [];
+                    const completed = items.filter((item) => item.done).length;
+                    const progress = Math.round((completed / Math.max(items.length, 1)) * 100);
+                    return (
+                      <div key={category.key} className="bg-white rounded-2xl p-5 flex flex-col gap-4 shadow-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className={`w-10 h-10 rounded-xl ${c.badgeBg} flex items-center justify-center shrink-0`}><Icon size={18} className={c.badgeText} /></div>
+                            <div className="min-w-0"><h3 className="font-semibold text-neutral-900">{category.label}</h3><p className="text-xs text-neutral-400">{completed}/{items.length} complete</p></div>
+                          </div>
+                          <div className="relative w-12 h-12 shrink-0">
+                            <svg width="48" height="48" viewBox="0 0 48 48" className="-rotate-90"><circle cx="24" cy="24" r="19" fill="none" stroke="#F1F1EF" strokeWidth="5" /><circle cx="24" cy="24" r="19" fill="none" stroke={c.ring} strokeWidth="5" strokeLinecap="round" strokeDasharray={2 * Math.PI * 19} strokeDashoffset={2 * Math.PI * 19 - (progress / 100) * 2 * Math.PI * 19} /></svg>
+                            <span className="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-neutral-700">{progress}%</span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          {items.map((item) => (
+                            <div key={item.id} className="flex items-start gap-2.5 rounded-xl bg-neutral-50 px-3 py-2.5">
+                              <button type="button" onClick={() => toggleTodayItem(category.key, item)} disabled={item.source === "workout"} aria-label={`${item.done ? "Completed" : "Complete"}: ${item.text}`} className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${item.done ? "bg-lime-400" : "border border-neutral-300 bg-white"} disabled:cursor-default`}>
+                                {item.done && <Check size={12} className="text-neutral-950" />}
+                              </button>
+                              <p className={`text-sm leading-5 ${item.done ? "text-neutral-400 line-through" : "text-neutral-700"}`}>{item.text}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                          <input value={todayDraft[category.key] || ""} onChange={(e) => setTodayDraft((prev) => ({ ...prev, [category.key]: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") addTodayPlanItem(category.key); }} placeholder={`Add ${category.label.toLowerCase()} item…`} className="min-w-0 flex-1 text-xs border border-neutral-200 rounded-lg px-3 py-2" />
+                          <button type="button" onClick={() => addTodayPlanItem(category.key)} className="px-3 py-2 bg-neutral-950 text-white text-xs font-medium rounded-lg flex items-center gap-1"><Plus size={13} /> Add</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {homeSub === "dashboard" && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -1239,7 +1353,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
             )}
 
             {homeSub === "todo" && (
-              <SectionCard title="Today — Friday, August 28">
+              <SectionCard title={`Today — ${formattedToday}`}>
                 <div className="flex flex-col">
                   {todayTodos.length === 0 && <p className="text-sm text-neutral-400 py-4">Nothing on today's list yet.</p>}
                   {todayTodos.map((t) => (
@@ -1412,20 +1526,34 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
                         <th className="pb-2 font-medium">Balance</th>
                         <th className="pb-2 font-medium">Date</th>
                         <th className="pb-2 font-medium">Status</th>
+                        <th className="pb-2 font-medium text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredDebts.map((d) => (
                         <tr key={d.id} className="border-t border-neutral-100">
-                          <td className="py-3 text-neutral-800"><div>{d.name}</div><div className="flex gap-1 mt-1"><button onClick={() => payDebt(d.id)} className="text-[11px] text-emerald-600">Pay</button><button onClick={() => addDebtAmount(d.id)} className="text-[11px] text-rose-600">Add on</button></div></td>
+                          <td className="py-3 text-neutral-800"><div className="font-medium">{d.name}</div><div className="text-[11px] text-neutral-400 mt-1">Added {d.date}</div></td>
                           <td className="py-3 text-neutral-600">{fmt(d.debt)}</td>
                           <td className="py-3 text-neutral-600">{fmt(d.paid)}</td>
                           <td className="py-3 text-neutral-600">{fmt(d.balance)}</td>
                           <td className="py-3 text-neutral-500">{d.date}</td>
                           <td className="py-3">
-                            <button onClick={() => setDebts(prev => prev.map(x => x.id !== d.id ? x : { ...x, status: x.status === "Active" ? "Paid" : "Active" }))}>
+                            <button type="button" onClick={() => setDebts(prev => prev.map(x => x.id !== d.id ? x : { ...x, status: x.status === "Active" ? "Paid" : "Active" }))} aria-label={`Mark ${d.name} as ${d.status === "Active" ? "paid" : "active"}`}>
                               <StatusPill status={d.status} />
                             </button>
+                          </td>
+                          <td className="py-3">
+                            <div className="flex justify-end gap-2">
+                              <button type="button" onClick={() => setDebtAction({ id: d.id, type: "pay", amount: "" })} className="rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100">Pay</button>
+                              <button type="button" onClick={() => setDebtAction({ id: d.id, type: "add", amount: "" })} className="rounded-lg bg-rose-50 px-2.5 py-1.5 text-[11px] font-medium text-rose-700 hover:bg-rose-100">Add on</button>
+                            </div>
+                            {debtAction?.id === d.id && (
+                              <div className="mt-2 flex items-center justify-end gap-2">
+                                <input autoFocus type="number" min="1" value={debtAction.amount} onChange={(e) => setDebtAction((prev) => ({ ...prev, amount: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") submitDebtAction(); if (e.key === "Escape") setDebtAction(null); }} placeholder={debtAction.type === "pay" ? "Payment" : "Add amount"} aria-label={`${debtAction.type === "pay" ? "Payment" : "Add-on"} amount for ${d.name}`} className="w-24 rounded-lg border border-neutral-200 px-2 py-1.5 text-xs" />
+                                <button type="button" onClick={submitDebtAction} className="rounded-lg bg-neutral-950 px-2.5 py-1.5 text-[11px] font-medium text-white">Save</button>
+                                <button type="button" onClick={() => setDebtAction(null)} className="rounded-lg bg-neutral-100 px-2.5 py-1.5 text-[11px] font-medium text-neutral-600">Cancel</button>
+                              </div>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -2064,7 +2192,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
             </SectionCard>
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 }
