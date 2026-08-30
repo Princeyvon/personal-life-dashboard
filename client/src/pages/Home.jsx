@@ -418,7 +418,8 @@ export default function PersonalLifeOS() {
   const [todayPlan, setTodayPlan] = useState({});
   const [todayDraft, setTodayDraft] = useState({});
   const [debtAction, setDebtAction] = useState(null);
-  const { user, loading: authLoading, isAuthenticated } = useAuth({ redirectOnUnauthenticated: true });
+  const previewMode = import.meta.env.VITE_PREVIEW_MODE === "true";
+  const { user, loading: authLoading, isAuthenticated } = useAuth({ redirectOnUnauthenticated: !previewMode });
   const snapshotQuery = trpc.dashboard.load.useQuery(undefined, { enabled: isAuthenticated, retry: false });
   const saveSnapshot = trpc.dashboard.save.useMutation();
   const [snapshotReady, setSnapshotReady] = useState(false);
@@ -1134,7 +1135,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
   if (authLoading || (isAuthenticated && snapshotQuery.isLoading)) {
     return <div className="min-h-screen bg-neutral-100 flex items-center justify-center text-sm text-neutral-500">Loading your workspace…</div>;
   }
-  if (!isAuthenticated) return null;
+  if (!isAuthenticated && !previewMode) return null;
   if (snapshotQuery.error) {
     return <div className="min-h-screen bg-neutral-100 flex items-center justify-center p-6 text-sm text-rose-600">We couldn’t load your workspace right now. Please refresh and try again.</div>;
   }
