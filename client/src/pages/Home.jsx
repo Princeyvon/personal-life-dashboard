@@ -644,6 +644,11 @@ export default function PersonalLifeOS() {
   const priorityMuscle = coachMuscleCoverage.slice().sort((a, b) => (muscleFrequency[a] || 0) - (muscleFrequency[b] || 0))[0];
   const [newLift, setNewLift] = useState({ exercise: "", load: "", reps: "", sets: "" });
   const [newPlanExercise, setNewPlanExercise] = useState({ name: "", sets: "3", reps: "8–12", rest: "90 sec" });
+  function addCustomMeal() {
+    if (!customMeal.meal.trim()) return;
+    setNutritionPlan((prev) => [...prev, { slot: customMeal.slot, meal: customMeal.meal.trim(), cue: "Custom meal", kcal: Number(customMeal.kcal) || 0, protein: Number(customMeal.protein) || 0 }]);
+    setCustomMeal({ slot: "Snack", meal: "", kcal: "", protein: "" });
+  }
   function addPlanExercise() {
     if (!newPlanExercise.name || currentFitnessDay.key === "rest") return;
     setFitnessPlan((prev) => prev.map((day) => day.key !== currentFitnessDay.key ? day : { ...day, exercises: [...day.exercises, { ...newPlanExercise, sets: Number(newPlanExercise.sets || 3) }] }));
@@ -654,7 +659,13 @@ export default function PersonalLifeOS() {
     setLiftLog((prev) => [{ id: Date.now(), date: today, exercise: newLift.exercise, load: Number(newLift.load), unit: "kg", reps: Number(newLift.reps), sets: Number(newLift.sets || 1), note: "" }, ...prev]);
     setNewLift({ exercise: "", load: "", reps: "", sets: "" });
   }
-  const nutritionPlan = [{ slot: "Breakfast", meal: "Eggs, oats, fruit, and milk", cue: "Add a protein source" }, { slot: "Lunch", meal: "Rice or potatoes, beans or lean meat, vegetables", cue: "Build a full plate" }, { slot: "Pre-workout", meal: "Banana with yogurt or peanut butter", cue: "Keep it easy to digest" }, { slot: "Dinner", meal: "Carbs, protein, vegetables, and healthy fats", cue: "Eat enough to recover" }, { slot: "Before sleep", meal: "Milk or yogurt with nuts", cue: "Optional if hungry" }];
+  const defaultNutritionPlan = [{ slot: "Breakfast", meal: "Eggs, oats, fruit, and milk", cue: "Add a protein source", kcal: 650, protein: 35 }, { slot: "Lunch", meal: "Rice or potatoes, beans or lean meat, vegetables", cue: "Build a full plate", kcal: 850, protein: 45 }, { slot: "Pre-workout", meal: "Banana with yogurt or peanut butter", cue: "Keep it easy to digest", kcal: 350, protein: 18 }, { slot: "Dinner", meal: "Carbs, protein, vegetables, and healthy fats", cue: "Eat enough to recover", kcal: 800, protein: 40 }, { slot: "Before sleep", meal: "Milk or yogurt with nuts", cue: "Optional if hungry", kcal: 300, protein: 15 }];
+  const [nutritionPlan, setNutritionPlan] = useState(defaultNutritionPlan);
+  const [customMeal, setCustomMeal] = useState({ slot: "Snack", meal: "", kcal: "", protein: "" });
+  const nutritionTotals = nutritionPlan.reduce((totals, meal) => ({ kcal: totals.kcal + Number(meal.kcal || 0), protein: totals.protein + Number(meal.protein || 0) }), { kcal: 0, protein: 0 });
+  const goalDelta = Math.max(0, Number(targetWeight) - Number(currentWeight));
+  const weeklyGainTarget = goalDelta > 0 ? Math.min(0.35, Math.max(0.15, goalDelta / 20)) : 0;
+  const calorieSurplusTarget = goalDelta > 0 ? 300 : 0;
   const [newWorkout, setNewWorkout] = useState({ type: "", duration: "" });
   function addWorkout() {
     if (!newWorkout.type) return;
@@ -1082,7 +1093,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
   const [voiceConfirmation, setVoiceConfirmation] = useState(null);
 
   function applyAIActions(actions) {
-    let next = { todos, projects, debts, income, workouts, liftLog, weight, sleep, conditionLog };
+    let next = { todos, projects, debts, income, workouts, liftLog, weight, sleep, conditionLog, diseases, diseaseArchive, healthSchedules };
     (actions || []).forEach((action, index) => {
       next = applyVoiceActionToState(next, action, today, `voice-${Date.now()}-${index}`);
     });
@@ -1095,6 +1106,9 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
     setWeight(next.weight);
     setSleep(next.sleep);
     setConditionLog(next.conditionLog);
+    setDiseases(next.diseases || diseases);
+    setDiseaseArchive(next.diseaseArchive || diseaseArchive);
+    setHealthSchedules(next.healthSchedules || healthSchedules);
   }
 
 
@@ -1123,7 +1137,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
       todos: todos.filter((t) => !t.done).map((t) => ({ id: t.id, text: t.text, due: t.due, domain: t.domain })),
       debts: debts.map((d) => ({ id: d.id, name: d.name, balance: d.debt - d.paid })),
       income: income.map((r) => ({ id: r.id, source: r.source, remaining: r.toReceive - r.paid })),
-      fitnessPlan, currentFitnessDay, workouts, liftLog, weight, sleep, diseases, conditionLog, nutritionPlan,
+      fitnessPlan, currentFitnessDay, workouts, liftLog, weight, sleep, diseases, diseaseArchive, conditionLog, healthSchedules, nutritionPlan,
     });
     try {
       const result = await voiceUpdateMutation.mutateAsync({ transcript: trimmed, context });
@@ -1217,6 +1231,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
       if (saved.weight) setWeight(saved.weight);
       if (saved.workouts) setWorkouts(saved.workouts);
       if (saved.fitnessPlan) setFitnessPlan(saved.fitnessPlan);
+      if (saved.nutritionPlan) setNutritionPlan(saved.nutritionPlan);
       if (Number.isFinite(saved.fitnessDayIndex)) setFitnessDayIndex(saved.fitnessDayIndex);
       if (saved.liftLog) setLiftLog(saved.liftLog);
       if (saved.sleep) setSleep(saved.sleep);
@@ -1240,10 +1255,10 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
 
   useEffect(() => {
     if (!isAuthenticated || !snapshotReady) return;
-    const payload = { todos, income, debts, weight, workouts, fitnessPlan, fitnessDayIndex, liftLog, sleep, conditionLog, diseases, diseaseArchive, healthSchedules, projects, assignments, readings, classes, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan };
+    const payload = { todos, income, debts, weight, workouts, fitnessPlan, fitnessDayIndex, liftLog, nutritionPlan, sleep, conditionLog, diseases, diseaseArchive, healthSchedules, projects, assignments, readings, classes, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan };
     const timer = window.setTimeout(() => saveSnapshot.mutate(payload), 500);
     return () => window.clearTimeout(timer);
-  }, [isAuthenticated, snapshotReady, todos, income, debts, weight, workouts, fitnessPlan, fitnessDayIndex, liftLog, sleep, conditionLog, diseases, diseaseArchive, healthSchedules, projects, assignments, readings, classes, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan]);
+  }, [isAuthenticated, snapshotReady, todos, income, debts, weight, workouts, fitnessPlan, fitnessDayIndex, liftLog, nutritionPlan, sleep, conditionLog, diseases, diseaseArchive, healthSchedules, projects, assignments, readings, classes, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan]);
 
   if (authLoading || (isAuthenticated && snapshotQuery.isLoading)) {
     return <div className="min-h-screen bg-neutral-100 flex items-center justify-center text-sm text-neutral-500">Loading your workspace…</div>;
@@ -1771,7 +1786,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
                   <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-6"><div style={{ height: 220 }}><ResponsiveContainer width="100%" height="100%"><LineChart data={weight}><CartesianGrid stroke="#F5F5F4" vertical={false} /><XAxis dataKey="date" tick={{ fontSize: 11, fill: "#A3A3A3" }} axisLine={false} tickLine={false} /><YAxis domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "#A3A3A3" }} axisLine={false} tickLine={false} /><Tooltip /><Line type="monotone" dataKey="weight" stroke="#34D399" strokeWidth={2} dot={{ r: 3 }} /></LineChart></ResponsiveContainer></div><div><div className="mb-3 flex items-center justify-between"><div><p className="text-sm font-semibold text-neutral-950">Lift log</p><p className="text-xs text-neutral-500">Compare load × reps over time</p></div><span className="rounded-full bg-lime-50 px-2.5 py-1 text-xs font-medium text-lime-700">{liftLog.length} entries</span></div><div className="max-h-48 overflow-y-auto">{liftLog.map((lift) => <div key={lift.id} className="flex items-center justify-between border-t border-neutral-100 py-2.5"><div><p className="text-sm font-medium text-neutral-800">{lift.exercise}</p><p className="text-xs text-neutral-400">{lift.date} · {lift.sets} sets × {lift.reps} reps</p></div><span className="text-sm font-semibold tabular-nums text-neutral-700">{lift.load}{lift.unit}</span></div>)}</div><div className="mt-4 grid grid-cols-2 gap-2"><input placeholder="Exercise" value={newLift.exercise} onChange={(e) => setNewLift({ ...newLift, exercise: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input type="number" placeholder="Load kg" value={newLift.load} onChange={(e) => setNewLift({ ...newLift, load: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input type="number" placeholder="Reps" value={newLift.reps} onChange={(e) => setNewLift({ ...newLift, reps: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input type="number" placeholder="Sets" value={newLift.sets} onChange={(e) => setNewLift({ ...newLift, sets: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /></div><button type="button" onClick={addLift} className="mt-2 rounded-xl bg-neutral-950 px-3 py-2 text-xs font-semibold text-white">Add lift</button></div></div>
                 </SectionCard>
                 <SectionCard title="Eat to recover" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Nutrition"} onClick={() => askIdeas("Nutrition", JSON.stringify({ currentWeight, targetWeight, nutritionPlan }))} />}>
-                  <div className="mb-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-950"><p className="font-semibold">Start with a gradual surplus</p><p className="mt-1 text-amber-900/75">Use the meal rhythm below as a template. A starting point of roughly 300–500 extra calories per day can be adjusted from your weight trend, appetite, and clinician or dietitian advice.</p></div><div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">{nutritionPlan.map((meal) => <div key={meal.slot} className="rounded-2xl bg-neutral-50 p-4"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">{meal.slot}</p><p className="mt-2 text-sm font-medium leading-5 text-neutral-800">{meal.meal}</p><p className="mt-2 text-xs text-neutral-500">{meal.cue}</p></div>)}</div><p className="mt-4 text-xs text-neutral-400">Favor balanced meals and protein foods; do not rely on chocolate or sugary drinks as the main weight-gain strategy.</p>
+                  <div className="mb-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-950"><p className="font-semibold">Your gain plan</p><p className="mt-1 text-amber-900/75">At {currentWeight} kg toward {targetWeight} kg, start with a modest surplus and adjust from your weekly trend, appetite, and clinician or dietitian advice.</p><div className="mt-3 grid grid-cols-3 gap-2"><div><p className="text-[10px] uppercase tracking-[0.12em] text-amber-900/55">Daily surplus</p><p className="mt-1 font-semibold">+{calorieSurplusTarget} kcal</p></div><div><p className="text-[10px] uppercase tracking-[0.12em] text-amber-900/55">Meal plan</p><p className="mt-1 font-semibold">{nutritionTotals.kcal.toLocaleString()} kcal</p></div><div><p className="text-[10px] uppercase tracking-[0.12em] text-amber-900/55">Protein</p><p className="mt-1 font-semibold">{nutritionTotals.protein} g</p></div></div><p className="mt-2 text-xs text-amber-900/70">A practical pace is about {weeklyGainTarget.toFixed(2)} kg/week. The plan is a starting point, not a prescription.</p></div><div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">{nutritionPlan.map((meal) => <div key={meal.slot} className="rounded-2xl bg-neutral-50 p-4"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">{meal.slot}</p><p className="mt-2 text-sm font-medium leading-5 text-neutral-800">{meal.meal}</p><p className="mt-2 text-xs text-neutral-500">{meal.cue}</p></div>)}</div><div className="mt-4 grid grid-cols-1 md:grid-cols-[0.6fr_1.8fr_0.6fr_0.6fr_auto] gap-2"><select value={customMeal.slot} onChange={(e) => setCustomMeal({ ...customMeal, slot: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm"><option>Snack</option><option>Breakfast</option><option>Lunch</option><option>Pre-workout</option><option>Dinner</option><option>Before sleep</option></select><input value={customMeal.meal} onChange={(e) => setCustomMeal({ ...customMeal, meal: e.target.value })} placeholder="Add a meal…" className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input type="number" value={customMeal.kcal} onChange={(e) => setCustomMeal({ ...customMeal, kcal: e.target.value })} placeholder="kcal" className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input type="number" value={customMeal.protein} onChange={(e) => setCustomMeal({ ...customMeal, protein: e.target.value })} placeholder="protein g" className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><button type="button" onClick={addCustomMeal} className="rounded-xl bg-neutral-950 px-3 py-2 text-xs font-semibold text-white">Add meal</button></div><p className="mt-4 text-xs text-neutral-400">Favor balanced meals and protein foods; do not rely on chocolate or sugary drinks as the main weight-gain strategy.</p>
                 </SectionCard>
               </>
             )}
