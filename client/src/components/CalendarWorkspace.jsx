@@ -48,7 +48,7 @@ function eventTime(event) {
   return dateLabel(eventStart(event), { hour: "numeric", minute: "2-digit" });
 }
 
-function makeDerivedEvents({ todos = [], assignments = [], syllabusEvents = [], projects = [], people = [] }) {
+function makeDerivedEvents({ todos = [], assignments = [], syllabusEvents = [], projects = [], people = [], healthSchedules = [], range }) {
   const taskEvents = todos.filter((item) => item.due && !item.done).map((item) => ({
     id: `todo-${item.id}`,
     title: item.text,
@@ -103,7 +103,23 @@ function makeDerivedEvents({ todos = [], assignments = [], syllabusEvents = [], 
     derived: true,
     domain: "work",
   })));
-  return [...taskEvents, ...assignmentEvents, ...syllabus, ...peopleEvents, ...projectEvents].filter((event) => !Number.isNaN(eventStart(event).getTime()));
+  const scheduleEvents = (range && healthSchedules.length ? healthSchedules.filter((schedule) => schedule.enabled).flatMap((schedule) => {
+    const events = [];
+    const day = new Date(range.start); day.setHours(0, 0, 0, 0);
+    const lastDay = new Date(range.end); lastDay.setHours(0, 0, 0, 0);
+    while (day <= lastDay) {
+      const weekday = day.getDay();
+      const allowed = schedule.cadence === "Weekdays" ? weekday > 0 && weekday < 6 : schedule.cadence === "Weekends" ? weekday === 0 || weekday === 6 : true;
+      if (allowed && schedule.time) {
+        const startAt = new Date(`${dateKey(day)}T${schedule.time}:00`);
+        const endAt = new Date(startAt.getTime() + 15 * 60 * 1000);
+        events.push({ id: `health-schedule-${schedule.id}-${dateKey(day)}`, title: schedule.title, startAt, endAt, allDay: 0, source: "dashboard", derived: true, domain: "health", healthSchedule: true, scheduleId: schedule.id });
+      }
+      day.setDate(day.getDate() + 1);
+    }
+    return events;
+  }) : []);
+  return [...taskEvents, ...assignmentEvents, ...syllabus, ...peopleEvents, ...projectEvents, ...scheduleEvents].filter((event) => !Number.isNaN(eventStart(event).getTime()));
 }
 
 function rangeFor(cursor, view) {
@@ -124,13 +140,13 @@ function rangeFor(cursor, view) {
 
 function EventPill({ event, onClick }) {
   return (
-    <button type="button" onClick={() => onClick(event)} className={`w-full text-left truncate rounded-md px-2 py-1 text-[11px] transition-transform duration-150 active:scale-[0.98] ${event.source === "google" ? "bg-blue-50 text-blue-700" : event.derived ? "bg-neutral-100 text-neutral-600" : "bg-lime-50 text-lime-800"}`}>
+    <button type="button" onClick={() => onClick(event)} className={`w-full text-left truncate rounded-md px-2 py-1 text-[11px] transition-transform duration-150 active:scale-[0.98] ${event.source === "google" ? "bg-blue-50 text-blue-700" : event.healthSchedule ? "bg-lime-100 text-lime-900" : event.derived ? "bg-neutral-100 text-neutral-600" : "bg-lime-50 text-lime-800"}`}>
       <span className="font-medium">{event.allDay ? "" : `${eventTime(event)} · `}</span>{event.title}
     </button>
   );
 }
 
-export default function CalendarWorkspace({ todos, assignments, syllabusEvents, projects, people, onIdeas }) {
+export default function CalendarWorkspace({ todos, assignments, syllabusEvents, projects, people, healthSchedules = [], onIdeas }) {
   const [cursor, setCursor] = useState(() => new Date());
   const [view, setView] = useState("month");
   const [selected, setSelected] = useState(null);
@@ -145,7 +161,7 @@ export default function CalendarWorkspace({ todos, assignments, syllabusEvents, 
   const createMutation = trpc.calendar.create.useMutation({ onSuccess: () => { setDraft(null); setSyncMessage("Event saved and mirrored to Google Calendar."); utils.calendar.list.invalidate(); }, onError: (error) => setSyncMessage(error.message || "Event could not be saved.") });
   const updateMutation = trpc.calendar.update.useMutation({ onSuccess: () => { setSelected(null); setDraft(null); setSyncMessage("Event updated and mirrored to Google Calendar."); utils.calendar.list.invalidate(); }, onError: (error) => setSyncMessage(error.message || "Event could not be updated.") });
   const deleteMutation = trpc.calendar.delete.useMutation({ onSuccess: () => { setSelected(null); setSyncMessage("Event deleted from the dashboard and Google Calendar."); utils.calendar.list.invalidate(); }, onError: (error) => setSyncMessage(error.message || "Event could not be deleted.") });
-  const derivedEvents = useMemo(() => makeDerivedEvents({ todos, assignments, syllabusEvents, projects, people }), [todos, assignments, syllabusEvents, projects, people]);
+  const derivedEvents = useMemo(() => makeDerivedEvents({ todos, assignments, syllabusEvents, projects, people, healthSchedules, range }), [todos, assignments, syllabusEvents, projects, people, healthSchedules, range]);
   const storedEvents = eventsQuery.data || [];
   const events = useMemo(() => [...storedEvents, ...derivedEvents].sort((a, b) => eventStart(a).getTime() - eventStart(b).getTime()), [storedEvents, derivedEvents]);
   const visibleEvents = useMemo(() => events.filter((event) => eventStart(event) <= range.end && eventEnd(event) >= range.start), [events, range]);
@@ -194,7 +210,7 @@ export default function CalendarWorkspace({ todos, assignments, syllabusEvents, 
         {syncMessage && <p className="w-full text-xs text-neutral-500" aria-live="polite">{syncMessage}</p>}
       </div>
 
-      {eventsQuery.isLoading ? <div className="rounded-2xl bg-white p-10 text-center text-sm text-neutral-400">Loading your calendar…</div> : eventsQuery.error ? <div className="rounded-2xl bg-rose-50 p-5 text-sm text-rose-700">We couldn’t load your calendar. Refresh and try again.</div> : view === "month" ? (
+      {eventsQuery.isLoading ? <div className="rounded-2xl bg-white p-10 text-center text-sm text-neutral-400">Loading your calendar…</div> : (<><>{eventsQuery.error && <div className="rounded-2xl bg-amber-50 px-4 py-3 text-xs text-amber-900">Google Calendar is unavailable here. Your local dashboard schedule is still shown below.</div>}</>{view === "month" ? (
         <div className="overflow-hidden rounded-2xl bg-white">
           <div className="grid grid-cols-7 border-b border-neutral-100">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <div key={day} className="px-2 py-3 text-center text-[11px] font-medium uppercase tracking-wide text-neutral-400">{day}</div>)}</div>
           <div className="grid grid-cols-7">
@@ -211,7 +227,7 @@ export default function CalendarWorkspace({ todos, assignments, syllabusEvents, 
         <div className="rounded-2xl bg-white p-5"><div className="mb-4 flex items-center gap-2 text-sm font-medium text-neutral-800"><Clock3 size={15} className="text-neutral-400" /> Timeline</div><div className="flex flex-col gap-2">{visibleEvents.length ? visibleEvents.map((event) => <button type="button" key={event.id} onClick={() => setSelected(event)} className="flex items-start gap-4 rounded-xl bg-neutral-50 px-4 py-3 text-left transition-transform duration-150 hover:-translate-y-0.5 active:scale-[0.99]"><span className="w-20 shrink-0 text-xs text-neutral-400">{eventTime(event)}</span><span className="text-sm font-medium text-neutral-800">{event.title}</span>{event.location && <span className="ml-auto flex items-center gap-1 text-xs text-neutral-400"><MapPin size={12} />{event.location}</span>}</button>) : <p className="py-8 text-center text-sm text-neutral-400">Nothing scheduled for this day.</p>}</div></div>
       ) : (
         <div className="rounded-2xl bg-white p-5"><div className="flex flex-col gap-2">{visibleEvents.length ? visibleEvents.map((event) => <button type="button" key={event.id} onClick={() => setSelected(event)} className="flex items-center gap-4 rounded-xl bg-neutral-50 px-4 py-3 text-left transition-transform duration-150 hover:-translate-y-0.5 active:scale-[0.99]"><span className="w-24 shrink-0 text-xs text-neutral-400">{dateLabel(eventStart(event), { weekday: "short", month: "short", day: "numeric" })}</span><span className="w-20 shrink-0 text-xs text-neutral-400">{eventTime(event)}</span><span className="text-sm font-medium text-neutral-800">{event.title}</span><span className="ml-auto rounded-full bg-white px-2 py-1 text-[10px] uppercase tracking-wide text-neutral-400">{event.source === "google" ? "Google" : event.derived ? "Dashboard" : "Local"}</span></button>) : <p className="py-8 text-center text-sm text-neutral-400">Nothing scheduled in this period.</p>}</div></div>
-      )}
+      )}</>)}
 
       {(draft || selected) && <div className="fixed inset-0 z-30 flex items-end justify-center bg-neutral-950/20 p-4 md:items-center" onClick={() => { setDraft(null); setSelected(null); }}><div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl" onClick={(event) => event.stopPropagation()}>{draft ? <form onSubmit={submitDraft} className="flex flex-col gap-4"><div className="flex items-center justify-between"><h3 className="text-base font-semibold text-neutral-900">{draft.id ? "Edit event" : "New event"}</h3><button type="button" aria-label="Close" onClick={() => setDraft(null)}><X size={16} className="text-neutral-400" /></button></div><input autoFocus value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="Event title…" className="rounded-lg border border-neutral-200 px-3 py-2 text-sm" /><div className="grid grid-cols-1 gap-2 sm:grid-cols-3"><input type="date" value={draft.date} onChange={(event) => setDraft({ ...draft, date: event.target.value })} className="rounded-lg border border-neutral-200 px-3 py-2 text-sm" /><input type="time" disabled={draft.allDay} value={draft.start} onChange={(event) => setDraft({ ...draft, start: event.target.value })} className="rounded-lg border border-neutral-200 px-3 py-2 text-sm disabled:opacity-50" /><input type="time" disabled={draft.allDay} value={draft.end} onChange={(event) => setDraft({ ...draft, end: event.target.value })} className="rounded-lg border border-neutral-200 px-3 py-2 text-sm disabled:opacity-50" /></div><label className="flex items-center gap-2 text-xs text-neutral-600"><input type="checkbox" checked={draft.allDay} onChange={(event) => setDraft({ ...draft, allDay: event.target.checked })} /> All-day event</label><input value={draft.location} onChange={(event) => setDraft({ ...draft, location: event.target.value })} placeholder="Location…" className="rounded-lg border border-neutral-200 px-3 py-2 text-sm" /><textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="Description…" rows={3} className="resize-none rounded-lg border border-neutral-200 px-3 py-2 text-sm" /><div className="flex justify-end gap-2"><button type="button" onClick={() => setDraft(null)} className="rounded-lg bg-neutral-100 px-4 py-2 text-xs font-medium text-neutral-600">Cancel</button><button type="submit" disabled={isWorking || !draft.title.trim()} className="rounded-lg bg-lime-400 px-4 py-2 text-xs font-medium text-neutral-950 disabled:opacity-50">{isWorking ? "Saving…" : "Save event"}</button></div></form> : <div className="flex flex-col gap-4"><div className="flex items-start justify-between"><div><p className="text-[11px] uppercase tracking-wide text-neutral-400">{selected.source === "google" ? "Google Calendar" : selected.derived ? "Dashboard item" : "Calendar event"}</p><h3 className="mt-1 text-lg font-semibold text-neutral-900">{selected.title}</h3></div><button type="button" aria-label="Close" onClick={() => setSelected(null)}><X size={16} className="text-neutral-400" /></button></div><div className="flex flex-col gap-2 text-sm text-neutral-600"><span className="flex items-center gap-2"><Clock3 size={14} className="text-neutral-400" />{dateLabel(eventStart(selected), { weekday: "long", month: "long", day: "numeric", year: "numeric" })} · {eventTime(selected)}</span>{selected.location && <span className="flex items-center gap-2"><MapPin size={14} className="text-neutral-400" />{selected.location}</span>}{selected.description && <p className="rounded-xl bg-neutral-50 p-3 text-sm text-neutral-600 whitespace-pre-wrap">{selected.description}</p>}</div>{selected.derived ? <p className="text-xs text-neutral-400">This item comes from your dashboard. Update it in its source section to keep everything aligned.</p> : <div className="flex justify-end gap-2"><button type="button" onClick={() => { setDraft({ id: selected.id, title: selected.title, description: selected.description || "", location: selected.location || "", date: localDateInput(eventStart(selected)), start: eventStart(selected).toISOString().slice(11, 16), end: eventEnd(selected).toISOString().slice(11, 16), allDay: Boolean(selected.allDay) }); setSelected(null); }} className="rounded-lg bg-neutral-100 px-4 py-2 text-xs font-medium text-neutral-700">Edit</button><button type="button" onClick={() => { if (window.confirm("Delete this event from the dashboard and Google Calendar?")) deleteMutation.mutate({ id: selected.id }); }} disabled={isWorking} className="rounded-lg bg-rose-50 px-4 py-2 text-xs font-medium text-rose-700">Delete</button></div>}</div>}</div></div>}
     </div>

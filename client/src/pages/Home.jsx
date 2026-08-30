@@ -2264,6 +2264,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
             syllabusEvents={syllabusEvents}
             projects={projects}
             people={people}
+            healthSchedules={healthSchedules}
             onIdeas={askIdeas}
           />
         )}
