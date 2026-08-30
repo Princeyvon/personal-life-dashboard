@@ -47,6 +47,7 @@ type VoiceUpdateState = {
   debts: any[];
   income: any[];
   workouts: any[];
+  liftLog?: any[];
   weight: any[];
   sleep: any[];
   conditionLog: any[];
@@ -73,6 +74,13 @@ export function applyVoiceActionToState(state: VoiceUpdateState, action: any, da
       return { ...state, income: state.income.map((row) => row.id !== action.incomeId ? row : applyIncomeReceipt(row, Number(action.amount || 0))) };
     case "log_workout":
       return { ...state, workouts: [{ id, date, type: action.workoutType || "Workout", duration: action.duration || "—" }, ...state.workouts] };
+    case "log_lift": {
+      const load = Number(action.load);
+      const reps = Number(action.reps);
+      const sets = Number(action.sets || 1);
+      if (!action.exercise || !Number.isFinite(load) || load <= 0 || !Number.isFinite(reps) || reps <= 0) return state;
+      return { ...state, liftLog: [{ id, date, exercise: action.exercise, load, unit: "kg", reps, sets, note: action.note || "" }, ...(state.liftLog || [])] };
+    }
     case "log_weight": {
       const weight = Number(action.weight);
       if (!Number.isFinite(weight) || weight <= 0) return state;

@@ -594,10 +594,33 @@ export default function PersonalLifeOS() {
     { id: 2, date: "Aug 24", type: "Legs", duration: "61 min" },
     { id: 3, date: "Aug 22", type: "Cardio", duration: "30 min" },
   ]);
+  const defaultFitnessPlan = [
+    { key: "push", label: "Push", focus: "Chest · Shoulders · Triceps", exercises: [{ name: "Bench press", sets: 4, reps: "6–10", rest: "2–3 min" }, { name: "Incline dumbbell press", sets: 3, reps: "8–12", rest: "90 sec" }, { name: "Overhead shoulder press", sets: 3, reps: "8–10", rest: "90 sec" }, { name: "Lateral raises", sets: 3, reps: "12–15", rest: "60 sec" }, { name: "Triceps rope pushdown", sets: 3, reps: "10–15", rest: "60 sec" }, { name: "Overhead triceps extension", sets: 2, reps: "10–12", rest: "60 sec" }] },
+    { key: "pull", label: "Pull", focus: "Back · Biceps", exercises: [{ name: "Deadlift", sets: 4, reps: "5–8", rest: "2–3 min" }, { name: "Pull-ups / lat pulldown", sets: 4, reps: "6–10", rest: "90 sec" }, { name: "Barbell row", sets: 3, reps: "8–12", rest: "90 sec" }, { name: "Face pulls", sets: 3, reps: "12–15", rest: "60 sec" }, { name: "Barbell curl", sets: 3, reps: "10–12", rest: "60 sec" }, { name: "Hammer curl", sets: 2, reps: "10–12", rest: "60 sec" }] },
+    { key: "legs", label: "Legs & core", focus: "Quads · Hamstrings · Glutes · Calves · Abs", exercises: [{ name: "Back squat", sets: 4, reps: "6–10", rest: "2–3 min" }, { name: "Romanian deadlift", sets: 3, reps: "8–12", rest: "90 sec" }, { name: "Walking lunges", sets: 3, reps: "10–12 / leg", rest: "90 sec" }, { name: "Leg press", sets: 3, reps: "10–12", rest: "90 sec" }, { name: "Calf raise", sets: 4, reps: "12–15", rest: "60 sec" }, { name: "Hanging leg raise", sets: 3, reps: "12–15", rest: "60 sec" }, { name: "Plank", sets: 3, reps: "30–60 sec", rest: "45 sec" }] },
+    { key: "rest", label: "Rest & recover", focus: "Walking · Mobility · Light activity", exercises: [] },
+  ];
+  const [fitnessPlan, setFitnessPlan] = useState(defaultFitnessPlan);
+  const [fitnessDayIndex, setFitnessDayIndex] = useState(0);
+  const currentFitnessDay = fitnessPlan[fitnessDayIndex % fitnessPlan.length] || defaultFitnessPlan[0];
+  const [liftLog, setLiftLog] = useState([{ id: 1, date: "Aug 26", exercise: "Bench press", load: 45, unit: "kg", reps: 8, sets: 4, note: "Controlled reps" }, { id: 2, date: "Aug 24", exercise: "Back squat", load: 60, unit: "kg", reps: 8, sets: 4, note: "Felt steady" }]);
+  const [newLift, setNewLift] = useState({ exercise: "", load: "", reps: "", sets: "" });
+  const [newPlanExercise, setNewPlanExercise] = useState({ name: "", sets: "3", reps: "8–12", rest: "90 sec" });
+  function addPlanExercise() {
+    if (!newPlanExercise.name || currentFitnessDay.key === "rest") return;
+    setFitnessPlan((prev) => prev.map((day) => day.key !== currentFitnessDay.key ? day : { ...day, exercises: [...day.exercises, { ...newPlanExercise, sets: Number(newPlanExercise.sets || 3) }] }));
+    setNewPlanExercise({ name: "", sets: "3", reps: "8–12", rest: "90 sec" });
+  }
+  function addLift() {
+    if (!newLift.exercise || !newLift.load || !newLift.reps) return;
+    setLiftLog((prev) => [{ id: Date.now(), date: today, exercise: newLift.exercise, load: Number(newLift.load), unit: "kg", reps: Number(newLift.reps), sets: Number(newLift.sets || 1), note: "" }, ...prev]);
+    setNewLift({ exercise: "", load: "", reps: "", sets: "" });
+  }
+  const nutritionPlan = [{ slot: "Breakfast", meal: "Eggs, oats, fruit, and milk", cue: "Add a protein source" }, { slot: "Lunch", meal: "Rice or potatoes, beans or lean meat, vegetables", cue: "Build a full plate" }, { slot: "Pre-workout", meal: "Banana with yogurt or peanut butter", cue: "Keep it easy to digest" }, { slot: "Dinner", meal: "Carbs, protein, vegetables, and healthy fats", cue: "Eat enough to recover" }, { slot: "Before sleep", meal: "Milk or yogurt with nuts", cue: "Optional if hungry" }];
   const [newWorkout, setNewWorkout] = useState({ type: "", duration: "" });
   function addWorkout() {
     if (!newWorkout.type) return;
-    setWorkouts([{ id: Date.now(), date: "Aug 28", type: newWorkout.type, duration: newWorkout.duration || "—" }, ...workouts]);
+    setWorkouts([{ id: Date.now(), date: today, type: newWorkout.type, duration: newWorkout.duration || "—" }, ...workouts]);
     setNewWorkout({ type: "", duration: "" });
   }
 
@@ -605,24 +628,26 @@ export default function PersonalLifeOS() {
   function addWeight() {
     if (!newWeight) return;
     setWeight((prev) => {
-      const rest = prev.filter((w) => w.date !== "Aug 28");
-      return [...rest, { date: "Aug 28", weight: Number(newWeight) }];
+      const rest = prev.filter((w) => w.date !== today);
+      return [...rest, { date: today, weight: Number(newWeight) }];
     });
     setNewWeight("");
   }
 
   const [sleep, setSleep] = useState([
-    { date: "Aug 22", hours: 6.5 }, { date: "Aug 23", hours: 7 }, { date: "Aug 24", hours: 5.5 },
-    { date: "Aug 25", hours: 7.5 }, { date: "Aug 26", hours: 6 }, { date: "Aug 27", hours: 8 },
+    { date: "Aug 22", hours: 6.5, quality: "Fair" }, { date: "Aug 23", hours: 7, quality: "Good" }, { date: "Aug 24", hours: 5.5, quality: "Low" },
+    { date: "Aug 25", hours: 7.5, quality: "Good" }, { date: "Aug 26", hours: 6, quality: "Fair" }, { date: "Aug 27", hours: 8, quality: "Good" },
   ]);
   const [newSleep, setNewSleep] = useState("");
+  const [newSleepMeta, setNewSleepMeta] = useState({ bedtime: "", wake: "", quality: "Good" });
   function addSleep() {
     if (!newSleep) return;
     setSleep((prev) => {
-      const rest = prev.filter((s) => s.date !== "Aug 28");
-      return [...rest, { date: "Aug 28", hours: Number(newSleep) }];
+      const rest = prev.filter((s) => s.date !== today);
+      return [...rest, { date: today, hours: Number(newSleep), quality: newSleepMeta.quality, bedtime: newSleepMeta.bedtime, wake: newSleepMeta.wake }];
     });
     setNewSleep("");
+    setNewSleepMeta({ bedtime: "", wake: "", quality: "Good" });
   }
   const avgSleep = sleep.length ? (sleep.reduce((s, x) => s + x.hours, 0) / sleep.length).toFixed(1) : 0;
 
@@ -636,7 +661,7 @@ export default function PersonalLifeOS() {
   const nextAppointment = conditionLog[0]?.nextAppointment;
   const [newCondition, setNewCondition] = useState({ note: "", medTaken: true });
   function addCondition() {
-    setConditionLog([{ id: Date.now(), date: "Aug 28", note: newCondition.note || "No note", medTaken: newCondition.medTaken, nextAppointment }, ...conditionLog]);
+    setConditionLog([{ id: Date.now(), date: today, note: newCondition.note || "No note", medTaken: newCondition.medTaken, nextAppointment }, ...conditionLog]);
     setNewCondition({ note: "", medTaken: true });
   }
 
@@ -866,8 +891,12 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
       gym: [
         ...todayLinkedTodos("health", (todo) => /gym|workout|exercise|run|lift/i.test(todo.text)),
         ...workouts.filter((workout) => workout.date === today || workout.date === "Aug 28").map((workout) => ({ id: `workout-${workout.id}`, text: `${workout.type}${workout.duration ? ` · ${workout.duration}` : ""}`, done: true, source: "workout" })),
+        ...currentFitnessDay.exercises.map((exercise) => ({ id: `plan-${currentFitnessDay.key}-${exercise.name}`, text: `${exercise.name} · ${exercise.sets} sets · ${exercise.reps}`, done: false, source: "plan" })),
       ],
-      food: [...todayLinkedTodos("health", (todo) => /food|meal|eat|water|hydrate|nutrition/i.test(todo.text))],
+      food: [
+        ...todayLinkedTodos("health", (todo) => /food|meal|eat|water|hydrate|nutrition/i.test(todo.text)),
+        ...nutritionPlan.map((meal) => ({ id: `meal-${meal.slot}`, text: `${meal.slot}: ${meal.meal}`, done: false, source: "plan" })),
+      ],
       classes: [...todayLinkedTodos("school", (todo) => !/application|masters|recommend/i.test(todo.text)), ...assignments.filter((item) => item.due === today && item.status !== "Graded").map((item) => ({ id: `assignment-${item.id}`, text: `${item.title}${item.course ? ` · ${item.course}` : ""}`, done: item.status === "Submitted" || item.status === "Graded", source: "assignment" }))],
       masters: [...todayLinkedTodos("school", (todo) => /application|masters|recommend/i.test(todo.text)), ...applications.filter((item) => item.deadline === today && item.status !== "Received").map((item) => ({ id: `application-${item.id}`, text: `Application · ${item.school}`, done: item.status === "Submitted" || item.status === "Received", source: "application" }))],
       work: todayLinkedTodos("work"),
@@ -880,7 +909,7 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
       result[category.key] = items.length ? items : [{ id: `${category.key}-default`, text: category.defaultText, done: false, source: "plan" }];
       return result;
     }, {});
-  }, [todayPlan, todayTodos, workouts, assignments, applications]);
+  }, [todayPlan, todayTodos, workouts, assignments, applications, currentFitnessDay, nutritionPlan]);
   function toggleTodayItem(categoryKey, item) {
     if (item.source === "todo") return toggleTodo(item.id);
     if (item.source === "assignment") return cycleAssignmentStatus(String(item.id).replace("assignment-", ""));
@@ -1003,7 +1032,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
   const [voiceConfirmation, setVoiceConfirmation] = useState(null);
 
   function applyAIActions(actions) {
-    let next = { todos, projects, debts, income, workouts, weight, sleep, conditionLog };
+    let next = { todos, projects, debts, income, workouts, liftLog, weight, sleep, conditionLog };
     (actions || []).forEach((action, index) => {
       next = applyVoiceActionToState(next, action, today, `voice-${Date.now()}-${index}`);
     });
@@ -1012,6 +1041,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
     setDebts(next.debts);
     setIncome(next.income);
     setWorkouts(next.workouts);
+    setLiftLog(next.liftLog || liftLog);
     setWeight(next.weight);
     setSleep(next.sleep);
     setConditionLog(next.conditionLog);
@@ -1043,7 +1073,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
       todos: todos.filter((t) => !t.done).map((t) => ({ id: t.id, text: t.text, due: t.due, domain: t.domain })),
       debts: debts.map((d) => ({ id: d.id, name: d.name, balance: d.debt - d.paid })),
       income: income.map((r) => ({ id: r.id, source: r.source, remaining: r.toReceive - r.paid })),
-      workouts, weight, sleep, conditionLog,
+      fitnessPlan, currentFitnessDay, workouts, liftLog, weight, sleep, diseases, conditionLog, nutritionPlan,
     });
     try {
       const result = await voiceUpdateMutation.mutateAsync({ transcript: trimmed, context });
@@ -1136,6 +1166,9 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
       if (saved.debts) setDebts(saved.debts);
       if (saved.weight) setWeight(saved.weight);
       if (saved.workouts) setWorkouts(saved.workouts);
+      if (saved.fitnessPlan) setFitnessPlan(saved.fitnessPlan);
+      if (Number.isFinite(saved.fitnessDayIndex)) setFitnessDayIndex(saved.fitnessDayIndex);
+      if (saved.liftLog) setLiftLog(saved.liftLog);
       if (saved.sleep) setSleep(saved.sleep);
       if (saved.conditionLog) setConditionLog(saved.conditionLog);
       if (saved.diseases) setDiseases(saved.diseases);
@@ -1155,10 +1188,10 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
 
   useEffect(() => {
     if (!isAuthenticated || !snapshotReady) return;
-    const payload = { todos, income, debts, weight, workouts, sleep, conditionLog, diseases, projects, assignments, readings, classes, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan };
+    const payload = { todos, income, debts, weight, workouts, fitnessPlan, fitnessDayIndex, liftLog, sleep, conditionLog, diseases, projects, assignments, readings, classes, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan };
     const timer = window.setTimeout(() => saveSnapshot.mutate(payload), 500);
     return () => window.clearTimeout(timer);
-  }, [isAuthenticated, snapshotReady, todos, income, debts, weight, workouts, sleep, conditionLog, diseases, projects, assignments, readings, classes, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan]);
+  }, [isAuthenticated, snapshotReady, todos, income, debts, weight, workouts, fitnessPlan, fitnessDayIndex, liftLog, sleep, conditionLog, diseases, projects, assignments, readings, classes, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan]);
 
   if (authLoading || (isAuthenticated && snapshotQuery.isLoading)) {
     return <div className="min-h-screen bg-neutral-100 flex items-center justify-center text-sm text-neutral-500">Loading your workspace…</div>;
@@ -1665,94 +1698,44 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
 
             {healthSub === "fitness" && (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                  <SectionCard title="Weight goal" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Weight goal"} onClick={() => askIdeas("Weight goal", JSON.stringify({ currentWeight, targetWeight, targetDate, goalProgress }))} />}>
-                    <p className="text-sm text-neutral-500 mb-1">Target</p>
-                    <p className="text-2xl font-semibold text-neutral-900 mb-3">{targetWeight}kg by {targetDate}</p>
-                    <div className="w-full h-2 bg-neutral-100 rounded-full overflow-hidden mb-2">
-                      <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${goalProgress}%` }} />
+                <div className="grid grid-cols-1 xl:grid-cols-[1.35fr_0.65fr] gap-5">
+                  <SectionCard title="Your training cycle" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Training plan"} onClick={() => askIdeas("Training plan", JSON.stringify({ fitnessPlan, currentFitnessDay }))} />}>
+                    <div className="flex flex-wrap gap-2 mb-5">
+                      {fitnessPlan.map((day, index) => <button key={day.key} type="button" onClick={() => setFitnessDayIndex(index)} className={`dashboard-action rounded-full px-3 py-2 text-xs font-semibold ${index === fitnessDayIndex % fitnessPlan.length ? "bg-neutral-950 text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"}`}>{index + 1} · {day.label}</button>)}
                     </div>
-                    <p className="text-xs text-neutral-500">{Math.round(goalProgress)}% of the way there — currently {currentWeight}kg</p>
+                    <div className="flex items-start justify-between gap-4 mb-4">
+                      <div><p className="text-2xl font-semibold tracking-tight text-neutral-950">{currentFitnessDay.label}</p><p className="mt-1 text-sm text-neutral-500">{currentFitnessDay.focus}</p></div>
+                      <button type="button" onClick={() => setFitnessDayIndex((index) => (index + 1) % fitnessPlan.length)} className="dashboard-action rounded-full bg-lime-300 px-3 py-2 text-xs font-semibold text-neutral-950">Next day</button>
+                    </div>
+                    {currentFitnessDay.exercises.length ? <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-sm"><thead><tr className="text-left text-xs text-neutral-400"><th className="pb-2 font-medium">Exercise</th><th className="pb-2 font-medium">Sets</th><th className="pb-2 font-medium">Reps</th><th className="pb-2 font-medium">Rest</th><th className="pb-2 font-medium">Done</th></tr></thead><tbody>{currentFitnessDay.exercises.map((exercise) => { const item = { id: `plan-${currentFitnessDay.key}-${exercise.name}`, text: `${exercise.name} · ${exercise.sets} sets · ${exercise.reps}`, done: Boolean(todayPlan.gym?.some((entry) => entry.id === `plan-${currentFitnessDay.key}-${exercise.name}` && entry.done)), source: "plan" }; return <tr key={exercise.name} className="border-t border-neutral-100"><td className="py-3 font-medium text-neutral-800">{exercise.name}</td><td className="py-3 text-neutral-500">{exercise.sets}</td><td className="py-3 text-neutral-500">{exercise.reps}</td><td className="py-3 text-neutral-500">{exercise.rest}</td><td className="py-3"><button type="button" onClick={() => toggleTodayItem("gym", item)} aria-label={`${item.done ? "Unmark" : "Mark"} ${exercise.name}`} className={`h-7 w-7 rounded-full flex items-center justify-center ${item.done ? "bg-lime-300 text-neutral-950" : "bg-neutral-100 text-neutral-400"}`}>{item.done ? <Check size={14} /> : <Plus size={14} />}</button></td></tr>; })}</tbody></table></div> : <p className="rounded-2xl bg-lime-50 p-4 text-sm text-lime-900">Active recovery only: walk, stretch, or do light mobility. No lifting today.</p>}
+                    {currentFitnessDay.key !== "rest" && <div className="mt-4 grid grid-cols-2 md:grid-cols-[1.4fr_0.45fr_0.65fr_0.65fr_auto] gap-2"><input placeholder="Add exercise" value={newPlanExercise.name} onChange={(e) => setNewPlanExercise({ ...newPlanExercise, name: e.target.value })} className="col-span-2 md:col-span-1 rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input type="number" placeholder="Sets" value={newPlanExercise.sets} onChange={(e) => setNewPlanExercise({ ...newPlanExercise, sets: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input placeholder="Reps" value={newPlanExercise.reps} onChange={(e) => setNewPlanExercise({ ...newPlanExercise, reps: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input placeholder="Rest" value={newPlanExercise.rest} onChange={(e) => setNewPlanExercise({ ...newPlanExercise, rest: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><button type="button" onClick={addPlanExercise} className="rounded-xl bg-neutral-950 px-3 py-2 text-xs font-semibold text-white">Add to plan</button></div>}
                   </SectionCard>
-                  <StatCard icon={Dumbbell} iconColor="emerald" label="Workouts (7 days)" value="3" delta="On pace" positive />
-                  <StatCard icon={Flame} iconColor="amber" label="Days since last workout" value="2" />
+                  <SectionCard title="Weight goal" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Weight goal"} onClick={() => askIdeas("Weight goal", JSON.stringify({ currentWeight, targetWeight, targetDate, goalProgress }))} />}>
+                    <p className="text-sm text-neutral-500">Current → target</p><p className="mt-1 text-2xl font-semibold text-neutral-950">{currentWeight}kg <span className="text-neutral-300">→</span> {targetWeight}kg</p><div className="mt-4 h-2 overflow-hidden rounded-full bg-neutral-100"><div className="h-full rounded-full bg-emerald-400" style={{ width: `${goalProgress}%` }} /></div><p className="mt-2 text-xs text-neutral-500">{Math.round(goalProgress)}% toward {targetDate}. Use the same scale and conditions when possible.</p><div className="mt-5 flex gap-2"><input type="number" step="0.1" placeholder="Today's kg" value={newWeight} onChange={(e) => setNewWeight(e.target.value)} className="min-w-0 flex-1 rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><button onClick={addWeight} className="dashboard-action rounded-xl bg-lime-300 px-3 py-2 text-xs font-semibold text-neutral-950">Log weight</button></div>
+                  </SectionCard>
                 </div>
-
-                <SectionCard title="Weight trend" right={
-                  <div className="flex items-center gap-2">
-                    <IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Weight trend"} onClick={() => askIdeas("Weight trend", JSON.stringify({ weight }))} />
-                    <input type="number" step="0.1" placeholder="Today's kg" value={newWeight} onChange={(e) => setNewWeight(e.target.value)} className="w-24 text-sm border border-neutral-200 rounded-lg px-2 py-1.5" />
-                    <button onClick={addWeight} className="px-3 py-1.5 bg-lime-400 text-neutral-950 text-xs font-medium rounded-lg flex items-center gap-1"><Plus size={12} /> Log</button>
-                  </div>
-                }>
-                  <div style={{ height: 200 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={weight}>
-                        <CartesianGrid stroke="#F5F5F4" vertical={false} />
-                        <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#A3A3A3" }} axisLine={false} tickLine={false} />
-                        <YAxis domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "#A3A3A3" }} axisLine={false} tickLine={false} />
-                        <Tooltip />
-                        <Line type="monotone" dataKey="weight" stroke="#34D399" strokeWidth={2} dot={{ r: 3 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
+                <SectionCard title="Weight trend & strength progress" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Progress"} onClick={() => askIdeas("Progress", JSON.stringify({ weight, liftLog }))} />}>
+                  <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-6"><div style={{ height: 220 }}><ResponsiveContainer width="100%" height="100%"><LineChart data={weight}><CartesianGrid stroke="#F5F5F4" vertical={false} /><XAxis dataKey="date" tick={{ fontSize: 11, fill: "#A3A3A3" }} axisLine={false} tickLine={false} /><YAxis domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "#A3A3A3" }} axisLine={false} tickLine={false} /><Tooltip /><Line type="monotone" dataKey="weight" stroke="#34D399" strokeWidth={2} dot={{ r: 3 }} /></LineChart></ResponsiveContainer></div><div><div className="mb-3 flex items-center justify-between"><div><p className="text-sm font-semibold text-neutral-950">Lift log</p><p className="text-xs text-neutral-500">Compare load × reps over time</p></div><span className="rounded-full bg-lime-50 px-2.5 py-1 text-xs font-medium text-lime-700">{liftLog.length} entries</span></div><div className="max-h-48 overflow-y-auto">{liftLog.map((lift) => <div key={lift.id} className="flex items-center justify-between border-t border-neutral-100 py-2.5"><div><p className="text-sm font-medium text-neutral-800">{lift.exercise}</p><p className="text-xs text-neutral-400">{lift.date} · {lift.sets} sets × {lift.reps} reps</p></div><span className="text-sm font-semibold tabular-nums text-neutral-700">{lift.load}{lift.unit}</span></div>)}</div><div className="mt-4 grid grid-cols-2 gap-2"><input placeholder="Exercise" value={newLift.exercise} onChange={(e) => setNewLift({ ...newLift, exercise: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input type="number" placeholder="Load kg" value={newLift.load} onChange={(e) => setNewLift({ ...newLift, load: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input type="number" placeholder="Reps" value={newLift.reps} onChange={(e) => setNewLift({ ...newLift, reps: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input type="number" placeholder="Sets" value={newLift.sets} onChange={(e) => setNewLift({ ...newLift, sets: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /></div><button type="button" onClick={addLift} className="mt-2 rounded-xl bg-neutral-950 px-3 py-2 text-xs font-semibold text-white">Add lift</button></div></div>
                 </SectionCard>
-
-                <SectionCard title="Workout log" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Workout log"} onClick={() => askIdeas("Workout log", JSON.stringify({ workouts }))} />}>
-                  <div className="flex flex-col sm:flex-row gap-2 mb-4">
-                    <input placeholder="Workout type" value={newWorkout.type} onChange={(e) => setNewWorkout({ ...newWorkout, type: e.target.value })} className="flex-1 text-sm border border-neutral-200 rounded-lg px-3 py-2" />
-                    <input placeholder="Duration (e.g. 45 min)" value={newWorkout.duration} onChange={(e) => setNewWorkout({ ...newWorkout, duration: e.target.value })} className="sm:w-40 text-sm border border-neutral-200 rounded-lg px-3 py-2" />
-                    <button onClick={addWorkout} className="px-4 py-2 bg-lime-400 text-neutral-950 text-sm font-medium rounded-lg flex items-center justify-center gap-1"><Plus size={14} /> Log today</button>
-                  </div>
-                  <div className="flex flex-col">
-                    {workouts.map((w) => (
-                      <div key={w.id} className="flex items-center justify-between py-3 border-b border-neutral-100 last:border-0">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center">
-                            <Dumbbell size={14} className="text-emerald-600" />
-                          </div>
-                          <div>
-                            <p className="text-sm text-neutral-800">{w.type}</p>
-                            <p className="text-xs text-neutral-400">{w.date}</p>
-                          </div>
-                        </div>
-                        <span className="text-sm text-neutral-500">{w.duration}</span>
-                      </div>
-                    ))}
-                  </div>
+                <SectionCard title="Eat to recover" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Nutrition"} onClick={() => askIdeas("Nutrition", JSON.stringify({ currentWeight, targetWeight, nutritionPlan }))} />}>
+                  <div className="mb-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-950"><p className="font-semibold">Start with a gradual surplus</p><p className="mt-1 text-amber-900/75">Use the meal rhythm below as a template. A starting point of roughly 300–500 extra calories per day can be adjusted from your weight trend, appetite, and clinician or dietitian advice.</p></div><div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">{nutritionPlan.map((meal) => <div key={meal.slot} className="rounded-2xl bg-neutral-50 p-4"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">{meal.slot}</p><p className="mt-2 text-sm font-medium leading-5 text-neutral-800">{meal.meal}</p><p className="mt-2 text-xs text-neutral-500">{meal.cue}</p></div>)}</div><p className="mt-4 text-xs text-neutral-400">Favor balanced meals and protein foods; do not rely on chocolate or sugary drinks as the main weight-gain strategy.</p>
                 </SectionCard>
               </>
             )}
 
             {healthSub === "sleep" && (
               <>
-                <div className="flex flex-col sm:flex-row gap-4 sm:gap-5">
-                  <StatCard icon={Moon} iconColor="blue" label="Average sleep (logged)" value={`${avgSleep}h`} />
-                  <StatCard icon={Moon} iconColor="violet" label="Last night" value={`${sleep[sleep.length - 1]?.hours || 0}h`} />
-                </div>
-                <SectionCard title="Sleep log" right={<div className="flex items-center gap-2"><IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Sleep"} onClick={() => askIdeas("Sleep", JSON.stringify({ sleep }))} />
-                  <div className="flex items-center gap-2">
-                    <input type="number" step="0.5" placeholder="Hours" value={newSleep} onChange={(e) => setNewSleep(e.target.value)} className="w-20 text-sm border border-neutral-200 rounded-lg px-2 py-1.5" />
-                    <button onClick={addSleep} className="px-3 py-1.5 bg-lime-400 text-neutral-950 text-xs font-medium rounded-lg flex items-center gap-1"><Plus size={12} /> Log</button>
-                  </div>
-                </div>}>
-                  <div style={{ height: 200 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={sleep}>
-                        <CartesianGrid stroke="#F5F5F4" vertical={false} />
-                        <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#A3A3A3" }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fontSize: 11, fill: "#A3A3A3" }} axisLine={false} tickLine={false} />
-                        <Tooltip />
-                        <Bar dataKey="hours" fill="#60A5FA" radius={[6, 6, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5"><StatCard icon={Moon} iconColor="blue" label="Average sleep" value={`${avgSleep}h`} delta="Target: 7h+" positive={Number(avgSleep) >= 7} /><StatCard icon={Moon} iconColor="violet" label="Last night" value={`${sleep[sleep.length - 1]?.hours || 0}h`} /><SectionCard title="Recovery signal"><p className="text-sm font-medium text-neutral-800">{Number(avgSleep) >= 7 ? "Your recent average is meeting the adult sleep target." : "Your recent average is below the 7-hour target."}</p><p className="mt-1 text-xs leading-5 text-neutral-500">Track timing and quality for a clearer pattern, not just one night.</p></SectionCard></div>
+                <SectionCard title="Sleep diary" right={<div className="flex items-center gap-2"><IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Sleep"} onClick={() => askIdeas("Sleep", JSON.stringify({ sleep }))} /><button type="button" onClick={() => setShowGlobalVoiceLog(true)} className="dashboard-action rounded-full bg-neutral-950 px-3 py-1.5 text-xs font-semibold text-white">Log by voice</button></div>}>
+                  <div className="mb-5 grid grid-cols-2 md:grid-cols-4 gap-2"><input type="number" step="0.5" placeholder="Hours" value={newSleep} onChange={(e) => setNewSleep(e.target.value)} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input type="time" aria-label="Bedtime" value={newSleepMeta.bedtime} onChange={(e) => setNewSleepMeta({ ...newSleepMeta, bedtime: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input type="time" aria-label="Wake time" value={newSleepMeta.wake} onChange={(e) => setNewSleepMeta({ ...newSleepMeta, wake: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><button onClick={addSleep} className="dashboard-action rounded-xl bg-lime-300 px-3 py-2 text-xs font-semibold text-neutral-950">Log sleep</button></div>
+                  <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-sm"><thead><tr className="text-left text-xs text-neutral-400"><th className="pb-2 font-medium">Date</th><th className="pb-2 font-medium">Hours</th><th className="pb-2 font-medium">Timing</th><th className="pb-2 font-medium">Quality</th></tr></thead><tbody>{sleep.slice().reverse().map((entry) => <tr key={entry.date} className="border-t border-neutral-100"><td className="py-3 text-neutral-800">{entry.date}</td><td className="py-3 font-medium tabular-nums">{entry.hours}h</td><td className="py-3 text-neutral-500">{entry.bedtime && entry.wake ? `${entry.bedtime} → ${entry.wake}` : "Not logged"}</td><td className="py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${entry.quality === "Good" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{entry.quality || "—"}</span></td></tr>)}</tbody></table></div><p className="mt-4 text-xs text-neutral-400">A sleep diary is most useful when it includes bedtime, awakenings, wake time, naps, exercise, caffeine or alcohol, and medication. Regular sleep problems should be discussed with a healthcare professional.</p>
                 </SectionCard>
               </>
             )}
 
             {healthSub === "disease" && (
               <>
+                <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-950"><p className="font-semibold">Log what you notice, then decide the next safe step.</p><p className="mt-1 leading-5 text-amber-900/75">Use voice for symptoms, onset, severity, clinic visits, medicines, and follow-up dates. The assistant can organize your record and suggest questions to ask a qualified clinician; it does not diagnose or prescribe.</p></div>
                 <div className="flex flex-col sm:flex-row gap-4 sm:gap-5">
                   <StatCard icon={Pill} iconColor="emerald" label="Medication adherence (this log)" value={`${adherencePct}%`} />
                   <StatCard icon={Calendar} iconColor="blue" label="Next appointment" value={nextAppointment} />
@@ -1812,7 +1795,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
                   <p className="text-xs text-neutral-400 mt-2">General habit suggestions only — not a substitute for medical advice.</p>
                 </SectionCard>
 
-                <SectionCard title="Condition log" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Condition log"} onClick={() => askIdeas("Condition log", JSON.stringify({ conditionLog, diseases }))} />}>
+                <SectionCard title="Condition log" right={<div className="flex items-center gap-2"><IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Condition log"} onClick={() => askIdeas("Condition log", JSON.stringify({ conditionLog, diseases }))} /><button type="button" onClick={() => setShowGlobalVoiceLog(true)} className="dashboard-action rounded-full bg-neutral-950 px-3 py-1.5 text-xs font-semibold text-white">Log by voice</button></div>}>
                   <div className="flex flex-col sm:flex-row gap-2 mb-4">
                     <div className="flex-1"><VoiceNoteBox onSubmit={(value) => setNewCondition({ ...newCondition, note: value })} placeholder="Record how you are feeling today, or type it here…" /></div>
                     <label className="flex items-center gap-2 text-sm text-neutral-600 px-2">
