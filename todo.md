@@ -2,7 +2,7 @@
 
 - [x] Recreate the supplied Personal Life Dashboard JSX as the foundation of the app
 - [x] Establish an elegant, responsive visual system for desktop and mobile
-- [x] Protect dashboard access with Manus sign-in
+- [x] Protect dashboard access with an authenticated session; the original Manus OAuth implementation is retained only in historical code paths
 - [x] Isolate all personal data by authenticated user
 - [x] Add cloud database schema for routines, tasks, goals, and notes
 - [x] Add typed server procedures for loading and saving dashboard data
@@ -121,3 +121,7 @@
 - [x] Save a fresh reviewable checkpoint after the verified Work, Finance, Voice, and Rewind changes
 - [x] Push the completed Personal Life Dashboard project to the user's Git repository
 - [x] Create a new public GitHub repository and push the completed Personal Life Dashboard project
+- [x] Replace Manus OAuth login with a simple PIN login using 3030 as the initial PIN, preserving cloud persistence and logout
+- [ ] Prove PIN login resolves to the prior persisted owner record and existing dashboard snapshot data remains available
+- [ ] Verify the complete browser PIN login, persisted-data load, logout, and return-to-login flow
+- [ ] Clean up or document remaining OAuth-coupled internals required for cron or calendar functionality

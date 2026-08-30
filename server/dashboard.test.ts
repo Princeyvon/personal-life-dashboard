@@ -5,18 +5,20 @@ import { dashboardSnapshotSchema } from "@shared/dashboard";
 import { applyIncomeReceipt, addIncomeExpected, applyDebtPayment, addDebtPrincipal, appendVoiceNote, applyVoiceActionToState, filterTodosForProject } from "@shared/interactionHelpers";
 import { addRelationshipGoal, editRelationshipGoal, toggleRelationshipGoal, deleteRelationshipGoal } from "@shared/relationshipHelpers";
 
-const { mockDb } = vi.hoisted(() => {
+const { mockDb, mockPinUser, mockExistingSnapshot } = vi.hoisted(() => {
   const where = vi.fn(async () => []);
   const set = vi.fn(() => ({ where }));
-  return { mockDb: { update: vi.fn(() => ({ set })), delete: vi.fn(() => ({ where })), insert: vi.fn(async () => []), select: vi.fn(() => ({ from: vi.fn(() => ({ where: vi.fn(async () => []) })) })) } };
+  const pinUser = { id: 99, openId: process.env.OWNER_OPEN_ID || "pin-owner", email: null, name: "Dashboard Owner", loginMethod: "pin", role: "user" as const, createdAt: new Date(), updatedAt: new Date(), lastSignedIn: new Date() };
+  const existingSnapshot = { todos: [{ id: 7, text: "Persisted task", done: false }], income: [], debts: [], weight: [], workouts: [], sleep: [], conditionLog: [], diseases: [], projects: [], assignments: [], readings: [], classes: [], syllabusEvents: [], applications: [], recommenders: [], people: [], voiceLog: [] };
+  return { mockDb: { update: vi.fn(() => ({ set })), delete: vi.fn(() => ({ where })), insert: vi.fn(async () => []), select: vi.fn(() => ({ from: vi.fn(() => ({ where: vi.fn(async () => []) })) })) }, mockPinUser: pinUser, mockExistingSnapshot: existingSnapshot };
 });
 vi.mock("./db", async () => {
   const actual = await vi.importActual<typeof import("./db")>("./db");
-  return { ...actual, getDb: vi.fn(async () => mockDb) };
+  return { ...actual, getDb: vi.fn(async () => mockDb), getUserByOpenId: vi.fn(async () => mockPinUser), upsertUser: vi.fn(async () => undefined), getDashboardSnapshot: vi.fn(async () => ({ snapshot: JSON.stringify(mockExistingSnapshot) })) };
 });
 
 function context(user: TrpcContext["user"]): TrpcContext {
-  return { user, req: { protocol: "https", headers: {} } as TrpcContext["req"], res: {} as TrpcContext["res"] };
+  return { user, req: { protocol: "https", headers: {} } as TrpcContext["req"], res: { cookie: vi.fn(), clearCookie: vi.fn() } as unknown as TrpcContext["res"] };
 }
 const user = { id: 42, openId: "test-user", email: "test@example.com", name: "Test User", loginMethod: "test", role: "user" as const, createdAt: new Date(), updatedAt: new Date(), lastSignedIn: new Date() };
 
@@ -109,6 +111,27 @@ describe("dashboard persistence", () => {
   });
 });
 
+
+describe("PIN authentication", () => {
+  it("accepts the configured initial PIN through the lightweight login endpoint", async () => {
+    const response = { cookie: vi.fn(), clearCookie: vi.fn() };
+    const caller = appRouter.createCaller({ ...context(null), res: response as unknown as TrpcContext["res"] });
+    const result = await caller.auth.pinLogin({ pin: process.env.PIN_LOGIN_INITIAL_PIN || "" });
+    expect(result.success).toBe(true);
+    expect(result.user.openId).toBe(process.env.OWNER_OPEN_ID || "pin-owner");
+    expect(result.user.loginMethod).toBe("pin");
+    expect(response.cookie).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.objectContaining({ httpOnly: true, secure: true }));
+  });
+
+  it("loads existing dashboard data for the same PIN-backed owner record", async () => {
+    const result = await appRouter.createCaller(context(mockPinUser)).dashboard.load();
+    expect(result?.todos).toEqual([{ id: 7, text: "Persisted task", done: false }]);
+  });
+
+  it("rejects an incorrect PIN", async () => {
+    await expect(appRouter.createCaller(context(null)).auth.pinLogin({ pin: "0000" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+});
 
 describe("voice update and Daily Rewind boundaries", () => {
   it("protects structured voice updates from unauthenticated access", async () => {

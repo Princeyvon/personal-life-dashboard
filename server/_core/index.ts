@@ -3,7 +3,6 @@ import express from "express";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
 import { registerGoogleCalendarRoutes } from "../googleCalendarRoutes";
 import { registerDailyRewindRoutes } from "../dailyRewindRoutes";
@@ -37,7 +36,6 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
-  registerOAuthRoutes(app);
   registerGoogleCalendarRoutes(app);
   registerDailyRewindRoutes(app);
   // tRPC API

@@ -405,7 +405,19 @@ export default function PersonalLifeOS() {
   const [financeSub, setFinanceSub] = useState("income");
   const [schoolSub, setSchoolSub] = useState("Georgetown");
   const today = new Date().toISOString().slice(0, 10);
-  const { user, loading: authLoading, isAuthenticated } = useAuth({ redirectOnUnauthenticated: true });
+  const { user, loading: authLoading, isAuthenticated, login, error: authError } = useAuth();
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState("");
+  async function handlePinLogin(event) {
+    event.preventDefault();
+    setPinError("");
+    try {
+      await login(pinInput);
+      setPinInput("");
+    } catch (error) {
+      setPinError(error?.message || "That PIN was not accepted.");
+    }
+  }
   const snapshotQuery = trpc.dashboard.load.useQuery(undefined, { enabled: isAuthenticated, retry: false });
   const saveSnapshot = trpc.dashboard.save.useMutation();
   const [snapshotReady, setSnapshotReady] = useState(false);
@@ -1072,7 +1084,24 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
   if (authLoading || (isAuthenticated && snapshotQuery.isLoading)) {
     return <div className="min-h-screen bg-neutral-100 flex items-center justify-center text-sm text-neutral-500">Loading your workspace…</div>;
   }
-  if (!isAuthenticated) return null;
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-neutral-100 flex items-center justify-center p-6 font-sans">
+        <div className="w-full max-w-sm rounded-2xl bg-white border border-neutral-200 shadow-sm p-7">
+          <div className="h-12 w-12 rounded-2xl bg-lime-400 flex items-center justify-center text-neutral-950 font-semibold mb-5">PL</div>
+          <p className="text-xs uppercase tracking-[0.16em] text-neutral-400">Personal Life OS</p>
+          <h1 className="text-2xl font-semibold text-neutral-950 mt-2">Welcome back</h1>
+          <p className="text-sm text-neutral-500 mt-2">Enter your private PIN to open your workspace.</p>
+          <form onSubmit={handlePinLogin} className="mt-6 space-y-4">
+            <label htmlFor="pin-login" className="block text-sm font-medium text-neutral-700">PIN</label>
+            <input id="pin-login" name="pin" type="password" inputMode="numeric" autoComplete="current-password" pattern="[0-9]{4,8}" maxLength={8} value={pinInput} onChange={(event) => setPinInput(event.target.value.replace(/\D/g, ""))} className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-center text-xl tracking-[0.4em] text-neutral-950 outline-none transition focus:border-lime-400 focus:ring-4 focus:ring-lime-100" placeholder="••••" aria-describedby="pin-login-error" required />
+            {(pinError || authError) && <p id="pin-login-error" className="text-sm text-rose-600" role="alert">{pinError || authError?.message || "Unable to sign in."}</p>}
+            <button type="submit" disabled={authLoading || pinInput.length < 4} className="w-full rounded-xl bg-neutral-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50">{authLoading ? "Opening workspace…" : "Unlock workspace"}</button>
+          </form>
+        </div>
+      </div>
+    );
+  }
   if (snapshotQuery.error) {
     return <div className="min-h-screen bg-neutral-100 flex items-center justify-center p-6 text-sm text-rose-600">We couldn’t load your workspace right now. Please refresh and try again.</div>;
   }

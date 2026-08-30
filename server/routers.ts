@@ -1,10 +1,12 @@
-import { COOKIE_NAME } from "@shared/const";
+import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
+import { sdk } from "./_core/sdk";
+import { ENV } from "./_core/env";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import { eq, and } from "drizzle-orm";
-import { getDb } from "./db";
+import { getDb, getUserByOpenId, upsertUser } from "./db";
 import { routines, tasks, goals, notes } from "../drizzle/schema";
 import { getDashboardSnapshot, saveDashboardSnapshot } from "./db";
 import { dashboardSnapshotSchema } from "@shared/dashboard";
@@ -13,7 +15,7 @@ import { TRPCError } from "@trpc/server";
 import { parse as parseCookie } from "cookie";
 import { createHeartbeatJob, updateHeartbeatJob } from "./_core/heartbeat";
 import { getDailyRewindSettings, saveDailyRewindSettings } from "./dailyRewindDb";
-import { calendarEvents } from "../drizzle/schema";
+import { googleCalendarConnections } from "../drizzle/schema";
 import { deleteCalendarEvent, deleteGoogleEventsNotIn, findCalendarEventByGoogleId, getCalendarConnection, getCalendarEvent, insertCalendarEvent, listCalendarEvents, saveCalendarConnection, updateCalendarConnectionSync, updateCalendarEvent } from "./calendarDb";
 import { calendarEventToGoogleEvent, createGoogleEvent, deleteGoogleEvent, decryptCredentials, encryptCredentials, exchangeGoogleCode, googleEventToCalendarEvent, listGoogleEvents, refreshGoogleCredentials, updateGoogleEvent } from "./googleCalendar";
 
@@ -22,6 +24,17 @@ export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
+    pinLogin: publicProcedure.input(z.object({ pin: z.string().regex(/^\d{4,8}$/, "PIN must be 4 to 8 digits") })).mutation(async ({ ctx, input }) => {
+      if (!ENV.pinLoginInitialPin || input.pin !== ENV.pinLoginInitialPin) throw new TRPCError({ code: "UNAUTHORIZED", message: "Incorrect PIN." });
+      const openId = ENV.ownerOpenId || "pin-owner";
+      const signedInAt = new Date();
+      await upsertUser({ openId, name: ENV.ownerName, loginMethod: "pin", lastSignedIn: signedInAt });
+      const user = await getUserByOpenId(openId);
+      if (!user) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Unable to initialize the PIN account." });
+      const sessionToken = await sdk.signSession({ openId, appId: ENV.appId || "pin-login", name: user.name || ENV.ownerName }, { expiresInMs: ONE_YEAR_MS });
+      ctx.res.cookie(COOKIE_NAME, sessionToken, getSessionCookieOptions(ctx.req));
+      return { success: true as const, user };
+    }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });

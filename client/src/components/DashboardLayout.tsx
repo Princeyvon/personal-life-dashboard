@@ -19,13 +19,11 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { startLogin } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
 import { LayoutDashboard, LogOut, PanelLeft, Users } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
-import { Button } from "./ui/button";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Page 1", path: "/" },
@@ -46,7 +44,19 @@ export default function DashboardLayout({
     const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
     return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
   });
-  const { loading, user } = useAuth();
+  const { loading, user, login } = useAuth();
+  const [pin, setPin] = useState("");
+  const [pinError, setPinError] = useState("");
+  async function handlePinLogin(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPinError("");
+    try {
+      await login(pin);
+      setPin("");
+    } catch (error) {
+      setPinError(error instanceof Error ? error.message : "That PIN was not accepted.");
+    }
+  }
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
@@ -58,24 +68,18 @@ export default function DashboardLayout({
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
-          <div className="flex flex-col items-center gap-6">
-            <h1 className="text-2xl font-semibold tracking-tight text-center">
-              Sign in to continue
-            </h1>
-            <p className="text-sm text-muted-foreground text-center max-w-sm">
-              Access to this dashboard requires authentication. Continue to launch the login flow.
-            </p>
+      <div className="flex items-center justify-center min-h-screen bg-neutral-100 p-6">
+        <form onSubmit={handlePinLogin} className="flex flex-col gap-5 p-7 max-w-sm w-full rounded-2xl bg-white border border-neutral-200 shadow-sm">
+          <div>
+            <p className="text-xs uppercase tracking-[0.16em] text-neutral-400">Personal Life OS</p>
+            <h1 className="text-2xl font-semibold tracking-tight mt-2 text-neutral-950">Welcome back</h1>
+            <p className="text-sm text-neutral-500 mt-2">Enter your private PIN to open your workspace.</p>
           </div>
-          <Button
-            onClick={() => startLogin()}
-            size="lg"
-            className="w-full shadow-lg hover:shadow-xl transition-all"
-          >
-            Sign in
-          </Button>
-        </div>
+          <label htmlFor="layout-pin-login" className="text-sm font-medium text-neutral-700">PIN</label>
+          <input id="layout-pin-login" type="password" inputMode="numeric" autoComplete="current-password" pattern="[0-9]{4,8}" maxLength={8} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, ""))} className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-center text-xl tracking-[0.4em] text-neutral-950 outline-none focus:border-lime-400 focus:ring-4 focus:ring-lime-100" placeholder="••••" required />
+          {pinError && <p className="text-sm text-rose-600" role="alert">{pinError}</p>}
+          <button type="submit" disabled={loading || pin.length < 4} className="w-full rounded-xl bg-neutral-950 px-4 py-3 text-sm font-medium text-white disabled:opacity-50">{loading ? "Opening workspace…" : "Unlock workspace"}</button>
+        </form>
       </div>
     );
   }
