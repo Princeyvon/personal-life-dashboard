@@ -6,7 +6,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import { eq, and } from "drizzle-orm";
-import { getDb, getUserByOpenId, upsertUser } from "./db";
+import { getDb, getPrimaryUser, getUserByOpenId, upsertUser } from "./db";
 import { routines, tasks, goals, notes } from "../drizzle/schema";
 import { getDashboardSnapshot, saveDashboardSnapshot } from "./db";
 import { dashboardSnapshotSchema } from "@shared/dashboard";
@@ -26,9 +26,11 @@ export const appRouter = router({
     me: publicProcedure.query(opts => opts.ctx.user),
     pinLogin: publicProcedure.input(z.object({ pin: z.string().regex(/^\d{4,8}$/, "PIN must be 4 to 8 digits") })).mutation(async ({ ctx, input }) => {
       if (!ENV.pinLoginInitialPin || input.pin !== ENV.pinLoginInitialPin) throw new TRPCError({ code: "UNAUTHORIZED", message: "Incorrect PIN." });
-      const openId = ENV.ownerOpenId || "pin-owner";
+      const configuredOwner = ENV.ownerOpenId ? await getUserByOpenId(ENV.ownerOpenId) : undefined;
+      const existingOwner = configuredOwner || await getPrimaryUser();
+      const openId = existingOwner?.openId || ENV.ownerOpenId || "pin-owner";
       const signedInAt = new Date();
-      await upsertUser({ openId, name: ENV.ownerName, loginMethod: "pin", lastSignedIn: signedInAt });
+      await upsertUser({ openId, name: existingOwner?.name || ENV.ownerName, email: existingOwner?.email || null, loginMethod: "pin", lastSignedIn: signedInAt });
       const user = await getUserByOpenId(openId);
       if (!user) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Unable to initialize the PIN account." });
       const sessionToken = await sdk.signSession({ openId, appId: ENV.appId || "pin-login", name: user.name || ENV.ownerName }, { expiresInMs: ONE_YEAR_MS });

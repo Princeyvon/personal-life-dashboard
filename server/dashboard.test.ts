@@ -14,7 +14,7 @@ const { mockDb, mockPinUser, mockExistingSnapshot } = vi.hoisted(() => {
 });
 vi.mock("./db", async () => {
   const actual = await vi.importActual<typeof import("./db")>("./db");
-  return { ...actual, getDb: vi.fn(async () => mockDb), getUserByOpenId: vi.fn(async () => mockPinUser), upsertUser: vi.fn(async () => undefined), getDashboardSnapshot: vi.fn(async () => ({ snapshot: JSON.stringify(mockExistingSnapshot) })) };
+  return { ...actual, getDb: vi.fn(async () => mockDb), getPrimaryUser: vi.fn(async () => mockPinUser), getUserByOpenId: vi.fn(async () => mockPinUser), upsertUser: vi.fn(async () => undefined), getDashboardSnapshot: vi.fn(async () => ({ snapshot: JSON.stringify(mockExistingSnapshot) })) };
 });
 
 function context(user: TrpcContext["user"]): TrpcContext {

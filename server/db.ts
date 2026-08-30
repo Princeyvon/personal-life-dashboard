@@ -84,6 +84,13 @@ export async function getUserById(id: number) {
   return result.length > 0 ? result[0] : undefined;
 }
 
+export async function getPrimaryUser() {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).orderBy(users.id).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
   if (!db) {
