@@ -1338,8 +1338,8 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
 
       {/* main */}
       <main id="main-content" className="dashboard-main flex-1 md:ml-20 p-4 md:p-6 overflow-y-auto pb-28 md:pb-6 min-w-0">
-        <div className="flex items-center justify-between mb-6 gap-3">
-          <div>
+        <div className="dashboard-topbar flex items-center justify-between mb-6 gap-4">
+          <div className="min-w-0">
             <h1 className="text-lg md:text-xl font-semibold text-neutral-900">
               {tab === "home" ? "Good morning" : domainMeta[tab]?.label}
             </h1>
@@ -1347,7 +1347,11 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
               {tab === "home" ? "Here's where things stand across your week." : formattedToday}
             </p>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="dashboard-header-stats hidden lg:grid grid-cols-2 gap-2 shrink-0">
+            <div className="dashboard-mini-stat"><span className="dashboard-mini-stat-value">{tab === "home" ? `${overall}%` : tab === "health" ? `${Math.round(goalProgress)}%` : tab === "finance" ? fmt(netPosition) : tab === "work" ? `${unfinishedTodos.length}` : `${upcomingTodos.length}`}</span><span className="dashboard-mini-stat-label">{tab === "home" ? "life score" : tab === "health" ? "goal progress" : tab === "finance" ? "net position" : tab === "work" ? "open tasks" : "up next"}</span></div>
+            <div className="dashboard-mini-stat"><span className="dashboard-mini-stat-value">{tab === "home" ? `${todayOverall}%` : tab === "health" ? `${currentWeight}kg` : tab === "finance" ? fmt(totalOutstandingDebt) : `${todayTodos.filter((item) => !item.done).length}`}</span><span className="dashboard-mini-stat-label">{tab === "home" ? "today" : tab === "health" ? "current weight" : tab === "finance" ? "outstanding" : "today open"}</span></div>
+          </div>
+          <div className="dashboard-header-actions flex items-center gap-3 shrink-0">
             {tab !== "home" && <IdeaButton loading={ideasMutation.isPending && ideaResult?.section === (domainMeta[tab]?.label || tab)} onClick={() => askIdeas(domainMeta[tab]?.label || tab, JSON.stringify({ tab, todos, income: incomeRows, debts: debtRows, applications, assignments, people }))} />}
             <button type="button" aria-label="Open voice log" onClick={() => setShowGlobalVoiceLog(true)} className={`dashboard-action relative w-9 h-9 rounded-full flex items-center justify-center ${voiceLoading ? "bg-lime-400 text-neutral-950" : "bg-white text-neutral-500"}`}>
               {voiceLoading ? <span className="absolute inset-0 rounded-full border-2 border-neutral-950/20 border-t-neutral-950 animate-spin" /> : null}
@@ -1427,8 +1431,8 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
             )}
 
             {homeSub === "dashboard" && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                <div className="md:col-span-2 flex flex-col gap-5">
+              <div className="dashboard-workspace-grid grid grid-cols-1 md:grid-cols-3 gap-5">
+                <div className="dashboard-primary-column md:col-span-2 flex flex-col gap-5">
                   <div className="bg-neutral-950 rounded-2xl p-6 text-white">
                     <div className="flex items-end justify-between mb-4">
                       <div>
@@ -1465,7 +1469,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
                   </SectionCard>
                 </div>
 
-                <div className="flex flex-col gap-5">
+                <aside className="dashboard-support-column flex flex-col gap-5">
                   <SectionCard title="Coach">
                     <div className="flex flex-col gap-3">
                       {nudges.map((n, i) => (
@@ -1507,7 +1511,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
                       <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${goalProgress}%` }} />
                     </div>
                   </SectionCard>
-                </div>
+                </aside>
               </div>
             )}
 
