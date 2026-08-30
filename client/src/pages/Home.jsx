@@ -603,6 +603,25 @@ export default function PersonalLifeOS() {
   const [fitnessPlan, setFitnessPlan] = useState(defaultFitnessPlan);
   const [fitnessDayIndex, setFitnessDayIndex] = useState(0);
   const currentFitnessDay = fitnessPlan[fitnessDayIndex % fitnessPlan.length] || defaultFitnessPlan[0];
+  const [coachSession, setCoachSession] = useState({ active: false, exerciseIndex: 0, setIndex: 1, reps: "", load: "" });
+  const [coachSeconds, setCoachSeconds] = useState(0);
+  useEffect(() => {
+    if (!coachSession.active) return undefined;
+    const timer = window.setInterval(() => setCoachSeconds((seconds) => seconds + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [coachSession.active]);
+  const coachExercise = currentFitnessDay.exercises[coachSession.exerciseIndex];
+  const coachCompleted = currentFitnessDay.exercises.length ? Math.round((coachSession.exerciseIndex / currentFitnessDay.exercises.length) * 100) : 100;
+  function startCoach() { if (!currentFitnessDay.exercises.length) return; setCoachSession({ active: true, exerciseIndex: 0, setIndex: 1, reps: "", load: "" }); setCoachSeconds(0); }
+  function finishCoachSet() {
+    if (!coachExercise || !coachSession.reps || !coachSession.load) return;
+    setLiftLog((prev) => [{ id: Date.now(), date: today, exercise: coachExercise.name, load: Number(coachSession.load), unit: "kg", reps: Number(coachSession.reps), sets: 1, note: `Live coach · set ${coachSession.setIndex}` }, ...prev]);
+    const nextSet = coachSession.setIndex + 1;
+    if (nextSet <= coachExercise.sets) setCoachSession((prev) => ({ ...prev, setIndex: nextSet, reps: "", load: "" }));
+    else if (coachSession.exerciseIndex + 1 < currentFitnessDay.exercises.length) setCoachSession((prev) => ({ ...prev, exerciseIndex: prev.exerciseIndex + 1, setIndex: 1, reps: "", load: "" }));
+    else setCoachSession((prev) => ({ ...prev, active: false }));
+  }
+  function stopCoach() { setCoachSession((prev) => ({ ...prev, active: false })); }
   const [liftLog, setLiftLog] = useState([{ id: 1, date: "Aug 26", exercise: "Bench press", load: 45, unit: "kg", reps: 8, sets: 4, note: "Controlled reps" }, { id: 2, date: "Aug 24", exercise: "Back squat", load: 60, unit: "kg", reps: 8, sets: 4, note: "Felt steady" }]);
   const [newLift, setNewLift] = useState({ exercise: "", load: "", reps: "", sets: "" });
   const [newPlanExercise, setNewPlanExercise] = useState({ name: "", sets: "3", reps: "8–12", rest: "90 sec" });
@@ -665,18 +684,28 @@ export default function PersonalLifeOS() {
     setNewCondition({ note: "", medTaken: true });
   }
 
-  const [diseases, setDiseases] = useState([
-    { id: 1, name: "Seasonal allergies", status: "Active", since: "2026-08-01" },
-  ]);
+  const [diseases, setDiseases] = useState([{ id: 1, name: "Seasonal allergies", status: "Active", since: "2026-08-01" }]);
+  const [diseaseArchive, setDiseaseArchive] = useState([]);
+  const [healthSchedules, setHealthSchedules] = useState([{ id: 1, title: "Sleep log", time: "22:00", cadence: "Daily", enabled: true }, { id: 2, title: "Wake-up check-in", time: "07:00", cadence: "Daily", enabled: true }, { id: 3, title: "Weight check", time: "07:10", cadence: "Daily", enabled: false }]);
+  const [newHealthSchedule, setNewHealthSchedule] = useState({ title: "", time: "", cadence: "Daily" });
+  const [customHealthActivity, setCustomHealthActivity] = useState("");
+  function addHealthSchedule(title = newHealthSchedule.title, time = newHealthSchedule.time, cadence = newHealthSchedule.cadence) {
+    if (!title || !time) return;
+    const id = Date.now();
+    setHealthSchedules((prev) => [...prev, { id, title, time, cadence, enabled: true }]);
+    setTodos((prev) => [...prev, { id: `health-schedule-${id}`, text: `Check in: ${title}`, due: today, time, domain: "health", done: false, scheduleId: id }]);
+    setNewHealthSchedule({ title: "", time: "", cadence: "Daily" });
+    setCustomHealthActivity("");
+  }
+  function toggleHealthSchedule(id) { setHealthSchedules((prev) => prev.map((item) => item.id === id ? { ...item, enabled: !item.enabled } : item)); }
+  function archiveDisease(id) { const resolved = diseases.find((disease) => disease.id === id); if (!resolved) return; setDiseases((prev) => prev.filter((disease) => disease.id !== id)); setDiseaseArchive((prev) => [{ ...resolved, status: "Resolved", resolvedOn: today }, ...prev]); }
   const [newDisease, setNewDisease] = useState("");
   function addDisease() {
     if (!newDisease) return;
     setDiseases([...diseases, { id: Date.now(), name: newDisease, status: "Active", since: today }]);
     setNewDisease("");
   }
-  function toggleDiseaseStatus(id) {
-    setDiseases((prev) => prev.map((d) => d.id !== id ? d : { ...d, status: d.status === "Active" ? "Resolved" : "Active" }));
-  }
+  function toggleDiseaseStatus(id) { archiveDisease(id); }
   function deleteDisease(id) {
     setDiseases((prev) => prev.filter((d) => d.id !== id));
   }
@@ -891,6 +920,7 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
       gym: [
         ...todayLinkedTodos("health", (todo) => /gym|workout|exercise|run|lift/i.test(todo.text)),
         ...workouts.filter((workout) => workout.date === today || workout.date === "Aug 28").map((workout) => ({ id: `workout-${workout.id}`, text: `${workout.type}${workout.duration ? ` · ${workout.duration}` : ""}`, done: true, source: "workout" })),
+        ...healthSchedules.filter((schedule) => schedule.enabled).map((schedule) => ({ id: `schedule-${schedule.id}`, text: `${schedule.title} · ${schedule.time}`, done: Boolean(todayTodos.some((todo) => todo.scheduleId === schedule.id && todo.done)), source: "schedule" })),
         ...currentFitnessDay.exercises.map((exercise) => ({ id: `plan-${currentFitnessDay.key}-${exercise.name}`, text: `${exercise.name} · ${exercise.sets} sets · ${exercise.reps}`, done: false, source: "plan" })),
       ],
       food: [
@@ -909,11 +939,12 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
       result[category.key] = items.length ? items : [{ id: `${category.key}-default`, text: category.defaultText, done: false, source: "plan" }];
       return result;
     }, {});
-  }, [todayPlan, todayTodos, workouts, assignments, applications, currentFitnessDay, nutritionPlan]);
+  }, [todayPlan, todayTodos, workouts, assignments, applications, currentFitnessDay, nutritionPlan, healthSchedules]);
   function toggleTodayItem(categoryKey, item) {
     if (item.source === "todo") return toggleTodo(item.id);
     if (item.source === "assignment") return cycleAssignmentStatus(String(item.id).replace("assignment-", ""));
     if (item.source === "application") return cycleApplicationStatus(String(item.id).replace("application-", ""));
+    if (item.source === "schedule") { const scheduledTodo = todayTodos.find((todo) => todo.scheduleId === Number(String(item.id).replace("schedule-", ""))); if (scheduledTodo) return toggleTodo(scheduledTodo.id); }
     if (item.source === "workout") return;
     setTodayPlan((prev) => {
       const existing = prev[categoryKey] || [];
@@ -1172,6 +1203,8 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
       if (saved.sleep) setSleep(saved.sleep);
       if (saved.conditionLog) setConditionLog(saved.conditionLog);
       if (saved.diseases) setDiseases(saved.diseases);
+      if (saved.diseaseArchive) setDiseaseArchive(saved.diseaseArchive);
+      if (saved.healthSchedules) setHealthSchedules(saved.healthSchedules);
       setProjects(loadedProjects);
       if (saved.assignments) setAssignments(saved.assignments);
       if (saved.readings) setReadings(saved.readings);
@@ -1188,10 +1221,10 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
 
   useEffect(() => {
     if (!isAuthenticated || !snapshotReady) return;
-    const payload = { todos, income, debts, weight, workouts, fitnessPlan, fitnessDayIndex, liftLog, sleep, conditionLog, diseases, projects, assignments, readings, classes, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan };
+    const payload = { todos, income, debts, weight, workouts, fitnessPlan, fitnessDayIndex, liftLog, sleep, conditionLog, diseases, diseaseArchive, healthSchedules, projects, assignments, readings, classes, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan };
     const timer = window.setTimeout(() => saveSnapshot.mutate(payload), 500);
     return () => window.clearTimeout(timer);
-  }, [isAuthenticated, snapshotReady, todos, income, debts, weight, workouts, fitnessPlan, fitnessDayIndex, liftLog, sleep, conditionLog, diseases, projects, assignments, readings, classes, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan]);
+  }, [isAuthenticated, snapshotReady, todos, income, debts, weight, workouts, fitnessPlan, fitnessDayIndex, liftLog, sleep, conditionLog, diseases, diseaseArchive, healthSchedules, projects, assignments, readings, classes, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan]);
 
   if (authLoading || (isAuthenticated && snapshotQuery.isLoading)) {
     return <div className="min-h-screen bg-neutral-100 flex items-center justify-center text-sm text-neutral-500">Loading your workspace…</div>;
@@ -1699,7 +1732,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
             {healthSub === "fitness" && (
               <>
                 <div className="grid grid-cols-1 xl:grid-cols-[1.35fr_0.65fr] gap-5">
-                  <SectionCard title="Your training cycle" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Training plan"} onClick={() => askIdeas("Training plan", JSON.stringify({ fitnessPlan, currentFitnessDay }))} />}>
+                  <SectionCard title="Your training cycle" right={<div className="flex items-center gap-2"><IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Training plan"} onClick={() => askIdeas("Training plan", JSON.stringify({ fitnessPlan, currentFitnessDay }))} /><button type="button" onClick={coachSession.active ? stopCoach : startCoach} className={`dashboard-action rounded-full px-3 py-1.5 text-xs font-semibold ${coachSession.active ? "bg-rose-50 text-rose-700" : "bg-neutral-950 text-white"}`}>{coachSession.active ? "End coach" : "Live coach"}</button></div>}>
                     <div className="flex flex-wrap gap-2 mb-5">
                       {fitnessPlan.map((day, index) => <button key={day.key} type="button" onClick={() => setFitnessDayIndex(index)} className={`dashboard-action rounded-full px-3 py-2 text-xs font-semibold ${index === fitnessDayIndex % fitnessPlan.length ? "bg-neutral-950 text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"}`}>{index + 1} · {day.label}</button>)}
                     </div>
@@ -1707,6 +1740,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
                       <div><p className="text-2xl font-semibold tracking-tight text-neutral-950">{currentFitnessDay.label}</p><p className="mt-1 text-sm text-neutral-500">{currentFitnessDay.focus}</p></div>
                       <button type="button" onClick={() => setFitnessDayIndex((index) => (index + 1) % fitnessPlan.length)} className="dashboard-action rounded-full bg-lime-300 px-3 py-2 text-xs font-semibold text-neutral-950">Next day</button>
                     </div>
+                    {coachSession.active && coachExercise && <div className="mb-5 rounded-2xl bg-neutral-950 p-4 text-white"><div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-lime-300">Live coach · {Math.floor(coachSeconds / 60)}:{String(coachSeconds % 60).padStart(2, "0")}</p><p className="mt-2 text-lg font-semibold">{coachExercise.name}</p><p className="mt-1 text-xs text-white/60">Set {coachSession.setIndex} of {coachExercise.sets} · Target {coachExercise.reps} · {coachExercise.rest} rest</p></div><span className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-white/75">{coachCompleted}%</span></div><div className="mt-4 grid grid-cols-2 gap-2"><select value={coachSession.load} onChange={(e) => setCoachSession({ ...coachSession, load: e.target.value })} className="rounded-xl bg-white/10 px-3 py-2 text-sm text-white outline-none"><option value="" className="text-neutral-900">Load (kg)</option>{[5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80, 100].map((load) => <option key={load} value={load} className="text-neutral-900">{load} kg</option>)}</select><select value={coachSession.reps} onChange={(e) => setCoachSession({ ...coachSession, reps: e.target.value })} className="rounded-xl bg-white/10 px-3 py-2 text-sm text-white outline-none"><option value="" className="text-neutral-900">Reps completed</option>{Array.from({ length: 20 }, (_, index) => index + 1).map((reps) => <option key={reps} value={reps} className="text-neutral-900">{reps} reps</option>)}</select></div><button type="button" onClick={finishCoachSet} disabled={!coachSession.load || !coachSession.reps} className="mt-3 w-full rounded-xl bg-lime-300 px-3 py-2 text-sm font-semibold text-neutral-950 disabled:cursor-not-allowed disabled:opacity-40">Save set & continue</button></div>}
                     {currentFitnessDay.exercises.length ? <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-sm"><thead><tr className="text-left text-xs text-neutral-400"><th className="pb-2 font-medium">Exercise</th><th className="pb-2 font-medium">Sets</th><th className="pb-2 font-medium">Reps</th><th className="pb-2 font-medium">Rest</th><th className="pb-2 font-medium">Done</th></tr></thead><tbody>{currentFitnessDay.exercises.map((exercise) => { const item = { id: `plan-${currentFitnessDay.key}-${exercise.name}`, text: `${exercise.name} · ${exercise.sets} sets · ${exercise.reps}`, done: Boolean(todayPlan.gym?.some((entry) => entry.id === `plan-${currentFitnessDay.key}-${exercise.name}` && entry.done)), source: "plan" }; return <tr key={exercise.name} className="border-t border-neutral-100"><td className="py-3 font-medium text-neutral-800">{exercise.name}</td><td className="py-3 text-neutral-500">{exercise.sets}</td><td className="py-3 text-neutral-500">{exercise.reps}</td><td className="py-3 text-neutral-500">{exercise.rest}</td><td className="py-3"><button type="button" onClick={() => toggleTodayItem("gym", item)} aria-label={`${item.done ? "Unmark" : "Mark"} ${exercise.name}`} className={`h-7 w-7 rounded-full flex items-center justify-center ${item.done ? "bg-lime-300 text-neutral-950" : "bg-neutral-100 text-neutral-400"}`}>{item.done ? <Check size={14} /> : <Plus size={14} />}</button></td></tr>; })}</tbody></table></div> : <p className="rounded-2xl bg-lime-50 p-4 text-sm text-lime-900">Active recovery only: walk, stretch, or do light mobility. No lifting today.</p>}
                     {currentFitnessDay.key !== "rest" && <div className="mt-4 grid grid-cols-2 md:grid-cols-[1.4fr_0.45fr_0.65fr_0.65fr_auto] gap-2"><input placeholder="Add exercise" value={newPlanExercise.name} onChange={(e) => setNewPlanExercise({ ...newPlanExercise, name: e.target.value })} className="col-span-2 md:col-span-1 rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input type="number" placeholder="Sets" value={newPlanExercise.sets} onChange={(e) => setNewPlanExercise({ ...newPlanExercise, sets: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input placeholder="Reps" value={newPlanExercise.reps} onChange={(e) => setNewPlanExercise({ ...newPlanExercise, reps: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input placeholder="Rest" value={newPlanExercise.rest} onChange={(e) => setNewPlanExercise({ ...newPlanExercise, rest: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><button type="button" onClick={addPlanExercise} className="rounded-xl bg-neutral-950 px-3 py-2 text-xs font-semibold text-white">Add to plan</button></div>}
                   </SectionCard>
@@ -1729,6 +1763,11 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
                 <SectionCard title="Sleep diary" right={<div className="flex items-center gap-2"><IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Sleep"} onClick={() => askIdeas("Sleep", JSON.stringify({ sleep }))} /><button type="button" onClick={() => setShowGlobalVoiceLog(true)} className="dashboard-action rounded-full bg-neutral-950 px-3 py-1.5 text-xs font-semibold text-white">Log by voice</button></div>}>
                   <div className="mb-5 grid grid-cols-2 md:grid-cols-4 gap-2"><input type="number" step="0.5" placeholder="Hours" value={newSleep} onChange={(e) => setNewSleep(e.target.value)} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input type="time" aria-label="Bedtime" value={newSleepMeta.bedtime} onChange={(e) => setNewSleepMeta({ ...newSleepMeta, bedtime: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input type="time" aria-label="Wake time" value={newSleepMeta.wake} onChange={(e) => setNewSleepMeta({ ...newSleepMeta, wake: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><button onClick={addSleep} className="dashboard-action rounded-xl bg-lime-300 px-3 py-2 text-xs font-semibold text-neutral-950">Log sleep</button></div>
                   <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-sm"><thead><tr className="text-left text-xs text-neutral-400"><th className="pb-2 font-medium">Date</th><th className="pb-2 font-medium">Hours</th><th className="pb-2 font-medium">Timing</th><th className="pb-2 font-medium">Quality</th></tr></thead><tbody>{sleep.slice().reverse().map((entry) => <tr key={entry.date} className="border-t border-neutral-100"><td className="py-3 text-neutral-800">{entry.date}</td><td className="py-3 font-medium tabular-nums">{entry.hours}h</td><td className="py-3 text-neutral-500">{entry.bedtime && entry.wake ? `${entry.bedtime} → ${entry.wake}` : "Not logged"}</td><td className="py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${entry.quality === "Good" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{entry.quality || "—"}</span></td></tr>)}</tbody></table></div><p className="mt-4 text-xs text-neutral-400">A sleep diary is most useful when it includes bedtime, awakenings, wake time, naps, exercise, caffeine or alcohol, and medication. Regular sleep problems should be discussed with a healthcare professional.</p>
+                </SectionCard>
+                <SectionCard title="Daily check-ins" right={<span className="text-xs text-neutral-400">Synced to Today</span>}>
+                  <div className="flex flex-wrap gap-2 mb-4">{[["Sleep log", "22:00"], ["Wake-up check-in", "07:00"], ["Weight check", "07:10"], ["Workout check-in", "18:00"]].map(([title, time]) => <button key={title} type="button" onClick={() => addHealthSchedule(title, time)} className="dashboard-action rounded-full bg-neutral-100 px-3 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-200">+ {title} · {time}</button>)}</div>
+                  <div className="grid grid-cols-1 md:grid-cols-[1.3fr_0.9fr_0.5fr_0.7fr_auto] gap-2"><select value={newHealthSchedule.title} onChange={(e) => setNewHealthSchedule({ ...newHealthSchedule, title: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm"><option value="">Choose activity</option><option>Sleep log</option><option>Wake-up check-in</option><option>Weight check</option><option>Workout check-in</option><option value="custom">Custom activity</option></select>{newHealthSchedule.title === "custom" ? <input placeholder="Name the activity" value={customHealthActivity} onChange={(e) => setCustomHealthActivity(e.target.value)} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /> : <div className="hidden md:block" />}<input type="time" value={newHealthSchedule.time} onChange={(e) => setNewHealthSchedule({ ...newHealthSchedule, time: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><select value={newHealthSchedule.cadence} onChange={(e) => setNewHealthSchedule({ ...newHealthSchedule, cadence: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm"><option>Daily</option><option>Weekdays</option><option>Weekends</option></select><button type="button" onClick={() => addHealthSchedule(newHealthSchedule.title === "custom" ? customHealthActivity : newHealthSchedule.title, newHealthSchedule.time, newHealthSchedule.cadence)} className="rounded-xl bg-neutral-950 px-3 py-2 text-xs font-semibold text-white">Add</button></div>
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2">{healthSchedules.map((item) => <div key={item.id} className="flex items-center justify-between rounded-xl bg-neutral-50 px-3 py-2.5"><div><p className="text-sm font-medium text-neutral-800">{item.title}</p><p className="text-xs text-neutral-400">{item.time} · {item.cadence}</p></div><button type="button" onClick={() => toggleHealthSchedule(item.id)} className={`rounded-full px-2.5 py-1 text-xs font-medium ${item.enabled ? "bg-lime-100 text-lime-800" : "bg-neutral-200 text-neutral-500"}`}>{item.enabled ? "On" : "Off"}</button></div>)}</div>
                 </SectionCard>
               </>
             )}
@@ -1768,7 +1807,8 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
                   </div>
                 </SectionCard>
 
-                <SectionCard title="Ask the health assistant" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Health assistant"} onClick={() => askIdeas("Health assistant", JSON.stringify({ diseases, conditionLog }))} />}>
+                {diseaseArchive.length > 0 && <SectionCard title="Archive" right={<span className="rounded-full bg-neutral-100 px-2.5 py-1 text-xs text-neutral-500">{diseaseArchive.length} resolved</span>}><div className="grid grid-cols-1 md:grid-cols-2 gap-2">{diseaseArchive.map((disease) => <div key={disease.id} className="flex items-center justify-between rounded-xl bg-neutral-50 px-3 py-2.5"><div><p className="text-sm text-neutral-700">{disease.name}</p><p className="text-xs text-neutral-400">Resolved {disease.resolvedOn || "—"}</p></div><span className="text-xs font-medium text-emerald-700">Resolved</span></div>)}</div></SectionCard>}
+                <SectionCard title="Ask the health assistant" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Health assistant"} onClick={() => askIdeas("Health assistant", JSON.stringify({ diseases, diseaseArchive, conditionLog }))} />}>
                   <div className="flex flex-col gap-2 max-h-72 overflow-y-auto mb-4">
                     {aiMessages.map((m, i) => (
                       <div key={i} className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${m.role === "user" ? "self-end bg-neutral-950 text-white" : "self-start bg-lime-50 text-lime-900"}`}>
