@@ -225,7 +225,7 @@ function VoiceNoteBox({ onSubmit, loading, placeholder }) {
   );
 }
 
-function MobileDock({ items, active, onChange }) {
+function MobileDock({ items, active, onChange, onVoice }) {
   const activeIndex = Math.max(0, items.findIndex((i) => i.key === active));
   const vbw = 342;
   const cx = (activeIndex + 0.5) * (vbw / items.length);
@@ -233,13 +233,14 @@ function MobileDock({ items, active, onChange }) {
   const ActiveIcon = items[activeIndex]?.icon;
 
   return (
-    <div className="md:hidden fixed left-0 right-0 bottom-5 flex justify-center px-5 z-20">
+    <div className="mobile-dock-shell md:hidden fixed left-0 right-0 bottom-5 flex flex-col items-center gap-3 px-5 z-20">
       <style>{`
         @keyframes dockPopScale { 0%{transform:scale(.7);} 55%{transform:scale(1.14);} 100%{transform:scale(1);} }
         .dock-pop-inner { animation: dockPopScale .48s cubic-bezier(.34,1.56,.64,1); }
         @media (prefers-reduced-motion: reduce) { .dock-pop-inner { animation: none; } }
       `}</style>
-      <div className="relative w-full max-w-[360px]" style={{ height: 64 }}>
+      {onVoice && <button type="button" className="mobile-voice-cta" onClick={onVoice} aria-label="Open voice log"><span><strong>Voice log</strong><small>Tap to speak</small></span><span className="mobile-voice-wave"><Mic size={20} /></span><Mic size={21} /></button>}
+      <div className="mobile-dock-bar relative w-full max-w-[360px]" style={{ height: 64 }}>
         <svg className="absolute inset-0 w-full h-full overflow-visible" viewBox={`0 0 ${vbw} 64`} preserveAspectRatio="none">
           <defs>
             <mask id="dockNotchMask" maskUnits="userSpaceOnUse">
@@ -1334,7 +1335,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
       </nav>
 
       {/* dock — mobile only */}
-      <MobileDock items={navItems} active={tab} onChange={setTab} />
+      <MobileDock items={navItems} active={tab} onChange={setTab} onVoice={() => setShowGlobalVoiceLog(true)} />
 
       {/* main */}
       <main id="main-content" className="dashboard-main flex-1 md:ml-20 p-4 md:p-6 overflow-y-auto pb-28 md:pb-6 min-w-0">
@@ -1431,86 +1432,84 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
             )}
 
             {homeSub === "dashboard" && (
-              <div className="dashboard-workspace-grid grid grid-cols-1 md:grid-cols-3 gap-5">
-                <div className="dashboard-primary-column md:col-span-2 flex flex-col gap-5">
-                  <div className="bg-neutral-950 rounded-2xl p-6 text-white">
-                    <div className="flex items-end justify-between mb-4">
-                      <div>
-                        <p className="text-sm text-neutral-400 mb-1">Overall life score</p>
-                        <p className="text-4xl font-semibold text-lime-400">{overall}%</p>
+              <div className="reference-home-grid dashboard-workspace-grid grid grid-cols-1 xl:grid-cols-[minmax(0,1.4fr)_minmax(19rem,0.85fr)] gap-6">
+                <div className="reference-home-main dashboard-primary-column flex flex-col gap-6 min-w-0">
+                  <section className="reference-welcome rounded-[1.5rem] bg-[#f7f8f5] p-6 md:p-8 overflow-hidden">
+                    <div className="flex items-center justify-between gap-6">
+                      <div className="max-w-[32rem]">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#5fbf9e]">Your personal operating system</p>
+                        <h2 className="mt-3 text-3xl md:text-4xl font-semibold tracking-[-0.055em] text-neutral-950">Ready to make today count?</h2>
+                        <p className="mt-3 max-w-md text-sm leading-6 text-neutral-500">One clear step in every part of life. Keep the important things moving without carrying them all in your head.</p>
                       </div>
-                      <div className="flex items-center gap-1 text-emerald-400 text-sm">
-                        <TrendingUp size={14} /> +5 this week
-                      </div>
+                      <div className="reference-welcome-mark hidden sm:flex" aria-hidden="true"><span>{user?.name?.charAt(0)?.toUpperCase() || "P"}</span></div>
                     </div>
-                    <div style={{ height: 90 }}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={trendData}>
-                          <defs>
-                            <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor="#A3E635" stopOpacity={0.5} />
-                              <stop offset="100%" stopColor="#A3E635" stopOpacity={0} />
-                            </linearGradient>
-                          </defs>
-                          <Area type="monotone" dataKey="score" stroke="#A3E635" strokeWidth={2} fill="url(#g)" />
-                        </AreaChart>
-                      </ResponsiveContainer>
+                  </section>
+
+                  <div className="reference-metrics-grid grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="reference-metric dashboard-card flex items-center gap-3 rounded-[1.2rem] bg-white p-4">
+                      <div className="reference-metric-icon reference-metric-icon-mint"><Check size={18} /></div>
+                      <div><p className="text-2xl font-semibold tracking-tight text-neutral-950">{todayCategories.reduce((sum, category) => sum + (todayCardItems[category.key] || []).filter((item) => item.done).length, 0)}</p><p className="text-[11px] text-neutral-500">Tasks done today</p></div>
+                    </div>
+                    <div className="reference-metric dashboard-card flex items-center gap-3 rounded-[1.2rem] bg-white p-4">
+                      <div className="reference-metric-icon"><Gauge size={18} /></div>
+                      <div><p className="text-2xl font-semibold tracking-tight text-neutral-950">{todayOverall}%</p><p className="text-[11px] text-neutral-500">Today completed</p></div>
+                    </div>
+                    <div className="reference-metric dashboard-card flex items-center gap-3 rounded-[1.2rem] bg-white p-4">
+                      <div className="reference-metric-icon reference-metric-icon-coral"><HeartPulse size={18} /></div>
+                      <div><p className="text-2xl font-semibold tracking-tight text-neutral-950">{overall}%</p><p className="text-[11px] text-neutral-500">Life score</p></div>
                     </div>
                   </div>
 
-                  <SectionCard title="Domain scores">
-                    <div className="flex justify-between px-2">
-                      <ScoreRing label="Finance" score={financeScore} colorKey="blue" />
-                      <ScoreRing label="Fitness" score={fitnessScore} colorKey="emerald" />
-                      <ScoreRing label="Work" score={workScore} colorKey="amber" />
-                      <ScoreRing label="School" score={schoolScore} colorKey="violet" />
-                      <ScoreRing label="Relationships" score={relationshipScore} colorKey="rose" />
+                  <SectionCard title="Today" right={<button type="button" onClick={() => setHomeSub("today")} className="reference-inline-action">View all <ChevronRight size={14} /></button>}>
+                    <div className="reference-task-list">
+                      {todayCategories.slice(0, 6).map((category) => {
+                        const Icon = category.icon;
+                        const items = todayCardItems[category.key] || [];
+                        const firstItem = items[0] || { text: category.defaultText, done: false };
+                        const completed = items.filter((item) => item.done).length;
+                        const progress = Math.round((completed / Math.max(items.length, 1)) * 100);
+                        return (
+                          <div key={category.key} className="reference-task-row">
+                            <div className="reference-task-icon"><Icon size={18} /></div>
+                            <div className="reference-task-copy min-w-0"><p className="font-semibold text-neutral-900">{category.label}</p><p className="truncate text-xs text-neutral-500">{firstItem.text}</p></div>
+                            <span className="hidden sm:inline text-xs text-neutral-400">{firstItem.time || `${items.length} item${items.length === 1 ? "" : "s"}`}</span>
+                            <ScoreRing label="" score={progress} colorKey={category.color} />
+                            <button type="button" onClick={() => setTab(category.domain)} className="reference-row-action">{firstItem.done ? "View" : "Open"}</button>
+                          </div>
+                        );
+                      })}
                     </div>
                   </SectionCard>
                 </div>
 
-                <aside className="dashboard-support-column flex flex-col gap-5">
+                <aside className="reference-home-side dashboard-support-column flex flex-col gap-6">
+                  <SectionCard title="Your life in balance" right={<span className="reference-select-label">This week <ChevronDown size={13} /></span>}>
+                    <div className="reference-chart-tabs"><span className="active">Overview</span><span>Trends</span></div>
+                    <div className="h-56 pt-3">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={trendData} margin={{ top: 10, right: 2, left: -18, bottom: 0 }}>
+                          <CartesianGrid vertical={false} stroke="rgba(17,18,15,0.07)" />
+                          <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#9a9d98" }} />
+                          <YAxis hide domain={[0, 100]} />
+                          <Tooltip cursor={{ stroke: "rgba(17,18,15,0.12)" }} contentStyle={{ borderRadius: 12, border: "1px solid rgba(17,18,15,0.08)", boxShadow: "0 12px 30px rgba(17,18,15,0.1)", fontSize: 12 }} />
+                          <Line type="monotone" dataKey="score" stroke="#11120f" strokeWidth={2.4} dot={{ r: 4, fill: "#11120f", stroke: "#fffefa", strokeWidth: 2 }} activeDot={{ r: 5, fill: "#5fbf9e" }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="reference-chart-legend"><span><i className="dot dot-mint" /> Wellness</span><span><i className="dot dot-ink" /> Productivity</span><span><i className="dot dot-coral" /> Learning</span></div>
+                  </SectionCard>
+
                   <SectionCard title="Coach">
-                    <div className="flex flex-col gap-3">
-                      {nudges.map((n, i) => (
-                        <div key={i} className="flex items-start gap-3 bg-lime-50 rounded-xl p-3">
-                          <n.icon size={16} className="text-lime-700 mt-0.5" />
-                          <p className="text-sm text-lime-900">{n.text}</p>
-                        </div>
-                      ))}
-                      <button onClick={askPerformanceAdvice} disabled={performanceAdviceMutation.isPending} className="px-3 py-2 bg-neutral-950 text-white text-xs font-medium rounded-lg">{performanceAdviceMutation.isPending ? "Reviewing…" : "Get advice on my performance"}</button>
-                      {performanceAdvice && <div className="bg-neutral-50 rounded-xl p-3 text-sm text-neutral-700 whitespace-pre-wrap">{performanceAdvice}</div>}
-                      <div className="flex justify-end"><IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Overall performance"} onClick={() => askIdeas("Overall performance", JSON.stringify({ overall, financeScore, fitnessScore, workScore, schoolScore, relationshipScore, unfinishedTodos: todos.filter((t) => !t.done) }))} /></div>
-                      {ideaResult && <div className="bg-lime-50 rounded-xl p-3 text-xs text-lime-900 whitespace-pre-wrap"><p className="font-medium mb-1">{ideaResult.section}</p>{ideaResult.text || "Generating ideas…"}</div>}
-                      <div className="pt-2 border-t border-neutral-100">
-                        <p className="text-xs font-medium text-neutral-500 mb-2">Ask your AI life coach</p>
-                        <div className="flex gap-2"><input id="life-coach-input" value={coachInput} onChange={(e) => setCoachInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { askLifeCoach(coachInput); setCoachInput(""); } }} placeholder="What should I focus on today?" className="flex-1 text-xs border border-neutral-200 rounded-lg px-3 py-2" /><button onClick={() => { askLifeCoach(coachInput); setCoachInput(""); }} disabled={coachMutation.isPending || !coachInput.trim()} className="px-3 py-2 bg-lime-400 text-neutral-950 text-xs font-medium rounded-lg">{coachMutation.isPending ? "…" : "Ask"}</button></div>
-                        {coachMessages.slice(-2).map((m, i) => <div key={i} className={`mt-2 rounded-xl px-3 py-2 text-xs ${m.role === "user" ? "bg-neutral-950 text-white" : "bg-lime-50 text-lime-900"}`}>{m.text}</div>)}
-                      </div>
-                      <div className="pt-2 border-t border-neutral-100 flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-xs font-medium text-neutral-700">Daily Rewind</p>
-                          <p className="text-[11px] text-neutral-400">Optional 10 PM local voice check-in</p>
-                        </div>
-                        <button type="button" onClick={() => rewindEnabledMutation.mutate({ enabled: !rewindStatusQuery.data?.enabled, timezone: userTimezone })} disabled={rewindEnabledMutation.isPending || rewindStatusQuery.isLoading} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${rewindStatusQuery.data?.enabled ? "bg-neutral-950 text-white" : "bg-neutral-100 text-neutral-700"}`}>
-                          {rewindEnabledMutation.isPending ? "Saving…" : rewindStatusQuery.data?.enabled ? "On" : "Enable"}
-                        </button>
-                      </div>
+                    <div className="flex flex-col gap-2.5">
+                      {nudges.slice(0, 3).map((n, i) => <div key={i} className="reference-nudge"><n.icon size={15} /><span>{n.text}</span></div>)}
+                      <button onClick={askPerformanceAdvice} disabled={performanceAdviceMutation.isPending} className="reference-primary-action">{performanceAdviceMutation.isPending ? "Reviewing…" : "Get advice on my performance"}<ChevronRight size={15} /></button>
                     </div>
                   </SectionCard>
-                  <SectionCard title="Net position">
-                    <p className="text-2xl font-semibold text-neutral-900">{fmt(netPosition)}</p>
-                    <p className="text-xs text-neutral-500 mt-1">Expected income minus outstanding debt</p>
-                  </SectionCard>
-                  <SectionCard title="Weight goal">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-neutral-600">{currentWeight}kg → {targetWeight}kg</span>
-                      <span className="text-sm font-medium text-emerald-600">{Math.round(goalProgress)}%</span>
-                    </div>
-                    <div className="w-full h-2 bg-neutral-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${goalProgress}%` }} />
-                    </div>
-                  </SectionCard>
+
+                  <section className="reference-insight rounded-[1.35rem] bg-[#f7f8f5] p-5">
+                    <div className="flex items-center gap-4"><div className="reference-insight-mark" aria-hidden="true">✦</div><div><p className="font-semibold text-neutral-950">Small habits, big life.</p><p className="mt-1 text-xs leading-5 text-neutral-500">Build consistency with guided routines and keep your attention on what matters next.</p></div></div>
+                    <button type="button" onClick={() => setHomeSub("today")} className="reference-underlined-action">Explore today <ChevronRight size={14} /></button>
+                  </section>
                 </aside>
               </div>
             )}
