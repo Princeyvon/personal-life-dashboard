@@ -122,6 +122,7 @@
 - [x] Push the completed Personal Life Dashboard project to the user's Git repository
 - [x] Create a new public GitHub repository and push the completed Personal Life Dashboard project
 - [x] Replace Manus OAuth login with a simple PIN login using 3030 as the initial PIN, preserving cloud persistence and logout
-- [ ] Prove PIN login resolves to the prior persisted owner record and existing dashboard snapshot data remains available
-- [ ] Verify the complete browser PIN login, persisted-data load, logout, and return-to-login flow
-- [ ] Clean up or document remaining OAuth-coupled internals required for cron or calendar functionality
+- [x] Prove PIN login resolves to the prior persisted owner record and existing dashboard snapshot data remains available
+- [x] Verify the complete browser PIN login, persisted-data load, logout, and return-to-login flow
+- [x] Clean up or document remaining OAuth-coupled internals required for cron or calendar functionality
+- [x] Run a true browser PIN end-to-end flow: sign in with 3030, confirm persisted dashboard data, click Log out, and verify return to the PIN screen — completed continuously on the same preview domain
