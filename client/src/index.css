@@ -137,19 +137,18 @@
   :root {
     --dashboard-ink: #151713;
     --dashboard-muted: #72776d;
-    --dashboard-paper: #f7f7f2;
-    --dashboard-card: rgba(255, 255, 252, 0.84);
+    --dashboard-paper: #f5f5f0;
+    --dashboard-card: #fffefa;
     --dashboard-accent: #b7e34a;
-    --dashboard-line: rgba(21, 23, 19, 0.08);
-    --dashboard-ease: cubic-bezier(0.23, 1, 0.32, 1);
+    --dashboard-line: rgba(21, 23, 19, 0.10);
+    --dashboard-ease: cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .dashboard-shell {
-    background:
-      radial-gradient(circle at 92% 4%, rgba(183, 227, 74, 0.12), transparent 26rem),
-      radial-gradient(circle at 10% 18%, rgba(255, 255, 255, 0.9), transparent 30rem),
-      var(--dashboard-paper);
+    background-color: var(--dashboard-paper);
     color: var(--dashboard-ink);
+    font-family: "Geist Sans", "Satoshi", "SF Pro Display", "Helvetica Neue", sans-serif;
+    font-variant-numeric: tabular-nums;
   }
 
   .dashboard-main {
@@ -161,13 +160,12 @@
   .dashboard-card {
     background: var(--dashboard-card);
     border: 1px solid var(--dashboard-line);
-    box-shadow: 0 1px 1px rgba(21, 23, 19, 0.02), 0 18px 42px rgba(53, 64, 37, 0.07);
-    backdrop-filter: blur(16px) saturate(110%);
+    box-shadow: 0 1px 1px rgba(21, 23, 19, 0.02), 0 12px 32px rgba(53, 64, 37, 0.045);
   }
 
   .dashboard-tabbar {
     position: sticky;
-    top: 0.75rem;
+    top: max(0.75rem, env(safe-area-inset-top));
     z-index: 30;
     width: fit-content;
     max-width: 100%;
@@ -180,8 +178,9 @@
 
   .dashboard-tabbar button,
   .dashboard-action {
-    transition: transform 160ms var(--dashboard-ease), background-color 180ms var(--dashboard-ease), color 180ms var(--dashboard-ease), box-shadow 180ms var(--dashboard-ease);
+    transition: transform 220ms var(--dashboard-ease), background-color 220ms var(--dashboard-ease), color 220ms var(--dashboard-ease), box-shadow 220ms var(--dashboard-ease), opacity 220ms var(--dashboard-ease);
     touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(183, 227, 74, 0.22);
   }
 
   .dashboard-tabbar button:active,
@@ -208,7 +207,52 @@
   }
 
   .dashboard-sidebar button:hover {
-    transform: translateY(-2px);
+    transform: translateY(-1px);
+  }
+
+  .dashboard-shell input,
+  .dashboard-shell textarea,
+  .dashboard-shell select {
+    min-height: 2.75rem;
+    border-color: rgba(21, 23, 19, 0.13);
+    background: rgba(255, 255, 252, 0.9);
+    color: var(--dashboard-ink);
+    transition: border-color 220ms var(--dashboard-ease), box-shadow 220ms var(--dashboard-ease), transform 220ms var(--dashboard-ease);
+  }
+
+  .dashboard-shell input::placeholder,
+  .dashboard-shell textarea::placeholder {
+    color: rgba(114, 119, 109, 0.82);
+  }
+
+  .dashboard-shell input:focus,
+  .dashboard-shell textarea:focus,
+  .dashboard-shell select:focus {
+    border-color: rgba(113, 143, 29, 0.55);
+    box-shadow: 0 0 0 4px rgba(183, 227, 74, 0.18);
+  }
+
+  .dashboard-shell button:disabled {
+    cursor: not-allowed;
+  }
+
+  .health-section-label {
+    color: var(--dashboard-muted);
+    font-size: 0.68rem;
+    font-weight: 650;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dashboard-shell *,
+    .dashboard-shell *::before,
+    .dashboard-shell *::after {
+      scroll-behavior: auto !important;
+      transition-duration: 0.001ms !important;
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+    }
   }
 
   @media (max-width: 767px) {
