@@ -27,6 +27,7 @@ export const appRouter = router({
     pinLogin: publicProcedure.input(z.object({ pin: z.string().regex(/^\d{4,8}$/, "PIN must be 4 to 8 digits") })).mutation(async ({ ctx, input }) => {
       if (!ENV.pinLoginInitialPin || input.pin !== ENV.pinLoginInitialPin) throw new TRPCError({ code: "UNAUTHORIZED", message: "Incorrect PIN." });
       const configuredOwner = ENV.ownerOpenId ? await getUserByOpenId(ENV.ownerOpenId) : undefined;
+      // Preserve the existing cloud account when the deployment does not expose OWNER_OPEN_ID.
       const existingOwner = configuredOwner || await getPrimaryUser();
       const openId = existingOwner?.openId || ENV.ownerOpenId || "pin-owner";
       const signedInAt = new Date();
