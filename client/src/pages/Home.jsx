@@ -34,7 +34,7 @@ const colorMap = {
 };
 
 function fmt(n) {
-  return Math.round(n).toLocaleString();
+  return `RWF ${Math.round(Number(n) || 0).toLocaleString("en-RW")}`;
 }
 
 // ---------- shared UI ----------
@@ -1000,6 +1000,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
   const [voiceLog, setVoiceLog] = useState([]);
   const [voiceLoading, setVoiceLoading] = useState(false);
   const [showGlobalVoiceLog, setShowGlobalVoiceLog] = useState(false);
+  const [voiceConfirmation, setVoiceConfirmation] = useState(null);
 
   function applyAIActions(actions) {
     let next = { todos, projects, debts, income, workouts, weight, sleep, conditionLog };
@@ -1017,6 +1018,20 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
   }
 
 
+  function navigateToVoiceTarget(targetTab, targetSubpage) {
+    if (!targetTab) return;
+    setTab(targetTab);
+    if (targetTab === "home" && targetSubpage) setHomeSub(targetSubpage);
+    if (targetTab === "health" && targetSubpage) setHealthSub(targetSubpage);
+    if (targetTab === "finance" && targetSubpage) setFinanceSub(targetSubpage);
+    if (targetTab === "school" && targetSubpage) setSchoolSub(targetSubpage);
+    if (targetTab === "relationships" && targetSubpage) setRelationshipsSub(targetSubpage);
+    if (targetTab === "work" && targetSubpage) {
+      const project = projects.find((item) => item.name.toLowerCase() === targetSubpage.toLowerCase());
+      if (project) setActiveProject(project.id);
+    }
+  }
+
   async function processVoiceNote(transcript) {
     const trimmed = transcript.trim();
     if (!trimmed || voiceUpdateMutation.isPending) return false;
@@ -1032,6 +1047,10 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
     });
     try {
       const result = await voiceUpdateMutation.mutateAsync({ transcript: trimmed, context });
+      if (result.needsConfirmation && result.actions?.length) {
+        setVoiceConfirmation({ summary: result.summary, actions: result.actions, targetTab: result.targetTab, targetSubpage: result.targetSubpage, reason: result.confirmationReason, transcript: trimmed });
+        return true;
+      }
       applyAIActions(result.actions);
       setVoiceLog((prev) => [{ id: Date.now(), text: result.summary || "Updated.", count: (result.actions || []).length, time: "Just now" }, ...prev]);
       return true;
@@ -1152,8 +1171,8 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
   return (
     <div className="dashboard-shell flex min-h-screen font-sans">
       {showGlobalVoiceLog && (
-        <div className="fixed inset-0 z-50 bg-neutral-950/45 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="global-voice-log-title">
-          <div className="dashboard-card w-full max-w-xl rounded-[1.5rem] bg-white p-6 shadow-2xl">
+        <div className="fixed inset-0 z-40 pointer-events-none" role="presentation">
+          <div className="pointer-events-auto absolute right-4 top-20 w-[min(28rem,calc(100vw-2rem))] rounded-[1.35rem] bg-white/95 p-5 shadow-[0_20px_60px_rgba(53,64,37,0.18)] ring-1 ring-neutral-950/10 backdrop-blur-xl" role="dialog" aria-modal="false" aria-labelledby="global-voice-log-title">
             <div className="flex items-start justify-between gap-4 mb-2">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-lime-700">Voice log</p>
@@ -1165,7 +1184,18 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
             <div className="mt-5 rounded-[1.2rem] border border-neutral-100 bg-neutral-50/70 p-4">
               <VoiceNoteBox onSubmit={async (value) => { const processed = await processVoiceNote(value); if (processed) setShowGlobalVoiceLog(false); }} loading={voiceLoading} placeholder="Say what happened, what needs doing, or what should be updated…" />
             </div>
-            <p className="mt-3 text-xs text-neutral-400">Examples: “Mark my gym session complete”, “Add a task to submit my Masters transcript”, or “I paid Nicole 50,000.”</p>
+            <p className="mt-3 text-xs text-neutral-400">Examples: “Mark my gym session complete”, “Add a task to submit my Masters transcript”, or “I paid Nicole RWF 50,000.”</p>
+          </div>
+        </div>
+      )}
+      {voiceConfirmation && (
+        <div className="fixed right-4 top-20 z-50 w-[min(28rem,calc(100vw-2rem))] rounded-[1.35rem] bg-neutral-950 p-5 text-white shadow-[0_20px_60px_rgba(21,23,19,0.24)]" role="alertdialog" aria-modal="false" aria-labelledby="voice-confirm-title">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-lime-300">Check the destination</p>
+          <h2 id="voice-confirm-title" className="mt-1 text-base font-semibold">This sounds like a {voiceConfirmation.targetSubpage || voiceConfirmation.targetTab || "different area"} update.</h2>
+          <p className="mt-2 text-sm leading-5 text-white/70">{voiceConfirmation.reason || "The note appears to belong to a different page than the one you were viewing."} Apply it there instead?</p>
+          <div className="mt-4 flex justify-end gap-2">
+            <button type="button" onClick={() => setVoiceConfirmation(null)} className="dashboard-action rounded-full px-3 py-2 text-xs font-medium text-white/70 hover:bg-white/10">Keep here</button>
+            <button type="button" onClick={() => { navigateToVoiceTarget(voiceConfirmation.targetTab, voiceConfirmation.targetSubpage); applyAIActions(voiceConfirmation.actions); setVoiceLog((prev) => [{ id: Date.now(), text: voiceConfirmation.summary || "Updated.", count: voiceConfirmation.actions.length, time: "Just now" }, ...prev]); setVoiceConfirmation(null); setShowGlobalVoiceLog(false); }} className="dashboard-action rounded-full bg-lime-300 px-3 py-2 text-xs font-semibold text-neutral-950">Apply update</button>
           </div>
         </div>
       )}
