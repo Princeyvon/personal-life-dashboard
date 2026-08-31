@@ -1,4 +1,4 @@
-import { COOKIE_NAME } from "@shared/const";
+import { COOKIE_NAME, PIN_OPEN_ID } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
@@ -16,6 +16,12 @@ import { getDailyRewindSettings, saveDailyRewindSettings } from "./dailyRewindDb
 import { calendarEvents } from "../drizzle/schema";
 import { deleteCalendarEvent, deleteGoogleEventsNotIn, findCalendarEventByGoogleId, getCalendarConnection, getCalendarEvent, insertCalendarEvent, listCalendarEvents, saveCalendarConnection, updateCalendarConnectionSync, updateCalendarEvent } from "./calendarDb";
 import { calendarEventToGoogleEvent, createGoogleEvent, deleteGoogleEvent, decryptCredentials, encryptCredentials, exchangeGoogleCode, googleEventToCalendarEvent, listGoogleEvents, refreshGoogleCredentials, updateGoogleEvent } from "./googleCalendar";
+import { transcribeAudio } from "./_core/voiceTranscription";
+import { storageGetSignedUrl } from "./storage";
+
+export function transcriptionErrorToTrpcCode(code: string) {
+  return code === "FILE_TOO_LARGE" || code === "INVALID_FORMAT" ? "BAD_REQUEST" as const : "INTERNAL_SERVER_ERROR" as const;
+}
 
 export const appRouter = router({
     // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
@@ -24,7 +30,8 @@ export const appRouter = router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
-      ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+      const pinSession = ctx.user?.openId === PIN_OPEN_ID;
+      ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, sameSite: pinSession ? "lax" : cookieOptions.sameSite, maxAge: -1 });
       return {
         success: true,
       } as const;
@@ -64,6 +71,19 @@ export const appRouter = router({
     }),
   }),
 
+  voice: router({
+    transcribe: protectedProcedure.input(z.object({ audioKey: z.string().min(1).max(500) })).mutation(async ({ ctx, input }) => {
+      const ownerPrefix = `users/${ctx.user.id}/attachments/`;
+      if (!input.audioKey.startsWith(ownerPrefix)) throw new TRPCError({ code: "FORBIDDEN", message: "Audio attachment does not belong to this dashboard." });
+      const audioUrl = await storageGetSignedUrl(input.audioKey);
+      const result = await transcribeAudio({ audioUrl, language: "en", prompt: "Transcribe this personal dashboard voice note accurately and preserve names, numbers, and action words." });
+      if ("error" in result) {
+        throw new TRPCError({ code: transcriptionErrorToTrpcCode(result.code), message: result.error });
+      }
+      return result;
+    }),
+  }),
+
   dailyRewind: router({
     status: protectedProcedure.query(async ({ ctx }) => {
       const settings = await getDailyRewindSettings(ctx.user.id);
@@ -71,8 +91,9 @@ export const appRouter = router({
     }),
     setEnabled: protectedProcedure.input(z.object({ enabled: z.boolean(), timezone: z.string().min(1).max(100).optional() })).mutation(async ({ ctx, input }) => {
       const existing = await getDailyRewindSettings(ctx.user.id);
-      const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
-      if (!sessionToken) throw new TRPCError({ code: "UNAUTHORIZED", message: "Session required to schedule Daily Rewind." });
+      const pinSession = ctx.user.openId === PIN_OPEN_ID;
+      const sessionToken = pinSession ? "" : parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+      if (!pinSession && !sessionToken) throw new TRPCError({ code: "UNAUTHORIZED", message: "Session required to schedule Daily Rewind." });
       if (!input.enabled) {
         if (existing?.scheduleCronTaskUid) await updateHeartbeatJob(existing.scheduleCronTaskUid, { enable: false }, sessionToken);
         return saveDailyRewindSettings(ctx.user.id, { enabled: 0 });

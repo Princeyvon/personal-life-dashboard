@@ -4,7 +4,7 @@ const clientId = process.env.GOOGLE_CLIENT_ID;
 const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
 
 describe("Google OAuth configuration", () => {
-  it("is accepted by Google’s token endpoint as a configured client", async () => {
+  it.skipIf(!clientId || !clientSecret)("is accepted by Google’s token endpoint as a configured client", async () => {
     expect(clientId).toBeTruthy();
     expect(clientSecret).toBeTruthy();
 
@@ -16,7 +16,7 @@ describe("Google OAuth configuration", () => {
         client_secret: clientSecret!,
         code: "validation-only-invalid-code",
         grant_type: "authorization_code",
-        redirect_uri: "https://3000-ipqg8kvd7b90fownjxzwa-b43af4e4.us4.manus.computer/api/oauth/callback",
+        redirect_uri: process.env.GOOGLE_OAUTH_REDIRECT_URI || "http://localhost:3000/api/google-calendar/callback",
       }),
     });
 

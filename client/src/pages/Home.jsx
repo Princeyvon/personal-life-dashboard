@@ -2,13 +2,14 @@ import React, { useState, useMemo, useRef, useEffect } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import CalendarWorkspace from "@/components/CalendarWorkspace";
+import PinGate from "@/components/PinGate";
 import { applyIncomeReceipt, addIncomeExpected, applyDebtPayment, addDebtPrincipal, appendVoiceNote, buildFinanceInsights, applyVoiceActionToState, filterTodosForProject } from "@shared/interactionHelpers";
 import { addRelationshipGoal, editRelationshipGoal, toggleRelationshipGoal, deleteRelationshipGoal } from "@shared/relationshipHelpers";
 import {
   Home, HeartPulse, Wallet, Briefcase, GraduationCap, Users, Bell,
   Plus, TrendingUp, TrendingDown, Droplet, Flame, Moon, Dumbbell, Scale,
   Target, AlertTriangle, Check, Trash2, Pencil, ChevronRight, ChevronLeft, ChevronDown, Gauge, Calendar, RefreshCw, MapPin, Pill, ListTodo,
-  Mic, Square, Sparkles, X, BookOpen, MessageCircle
+  Mic, Square, Sparkles, X, BookOpen, MessageCircle, LockKeyhole
 } from "lucide-react";
 import {
   AreaChart, Area, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -156,69 +157,240 @@ function SubTabs({ tabs, active, onChange }) {
   );
 }
 
+const VOICE_MAX_BYTES = 16 * 1024 * 1024;
+const VOICE_MAX_DURATION_MS = 5 * 60 * 1000;
+
+function getVoiceMimeType() {
+  if (typeof window === "undefined" || !window.MediaRecorder) return "";
+  return ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus", "audio/wav"].find((type) => window.MediaRecorder.isTypeSupported?.(type)) || "";
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      resolve(result.includes(",") ? result.slice(result.indexOf(",") + 1) : result);
+    };
+    reader.onerror = () => reject(new Error("The recording could not be prepared for upload."));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function voiceExtension(contentType) {
+  if (contentType.includes("mp4")) return "m4a";
+  if (contentType.includes("ogg")) return "ogg";
+  if (contentType.includes("wav")) return "wav";
+  return "webm";
+}
+
 function VoiceNoteBox({ onSubmit, loading, placeholder }) {
   const [text, setText] = useState("");
   const [recording, setRecording] = useState(false);
   const [supported, setSupported] = useState(true);
+  const [status, setStatus] = useState("idle");
+  const [error, setError] = useState("");
+  const [audioPreview, setAudioPreview] = useState(null);
   const recognitionRef = useRef(null);
+  const recorderRef = useRef(null);
+  const streamRef = useRef(null);
+  const chunksRef = useRef([]);
+  const stopTimerRef = useRef(null);
+  const textRef = useRef("");
+  const recordingRef = useRef(false);
+  const transcribeMutation = trpc.voice.transcribe.useMutation();
 
-  function startRecording() {
+  useEffect(() => {
+    textRef.current = text;
+  }, [text]);
+
+  useEffect(() => () => {
+    if (audioPreview?.url) URL.revokeObjectURL(audioPreview.url);
+    if (stopTimerRef.current) window.clearTimeout(stopTimerRef.current);
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    recognitionRef.current?.abort?.();
+  }, [audioPreview]);
+
+  function updateText(value) {
+    textRef.current = value;
+    setText(value);
+  }
+
+  function setRecordingState(value) {
+    recordingRef.current = value;
+    setRecording(value);
+  }
+
+  function startSpeechRecognition() {
     const SR = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
-    if (!SR) {
-      setSupported(false);
-      return;
-    }
+    if (!SR) return;
     const recognition = new SR();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
-    recognition.onresult = (e) => {
+    recognition.onresult = (event) => {
       let transcript = "";
-      for (let i = 0; i < e.results.length; i++) transcript += e.results[i][0].transcript;
-      setText(transcript);
+      for (let i = 0; i < event.results.length; i += 1) transcript += event.results[i][0].transcript;
+      updateText(transcript);
     };
-    recognition.onerror = () => setRecording(false);
-    recognition.onend = () => setRecording(false);
+    recognition.onerror = (event) => {
+      if (event.error !== "aborted" && event.error !== "no-speech") setError("Live captions are unavailable, but your audio is still being recorded.");
+    };
+    recognition.onend = () => {
+      if (recordingRef.current && recorderRef.current?.state === "recording") {
+        try { recognition.start(); } catch {}
+      }
+    };
     recognitionRef.current = recognition;
-    try {
-      recognition.start();
-      setRecording(true);
-    } catch {
-      setSupported(false);
-    }
-  }
-  function stopRecording() {
-    recognitionRef.current?.stop();
-    setRecording(false);
-  }
-  function submit() {
-    if (!text.trim() || loading) return;
-    onSubmit(text.trim());
-    setText("");
+    try { recognition.start(); } catch { recognitionRef.current = null; }
   }
 
+  async function startRecording() {
+    setError("");
+    if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      setSupported(false);
+      setError("Audio recording is not supported here. You can still type the note below.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      const mimeType = getVoiceMimeType();
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      streamRef.current = stream;
+      chunksRef.current = [];
+      recorderRef.current = recorder;
+      recorder.ondataavailable = (event) => { if (event.data?.size) chunksRef.current.push(event.data); };
+      recorder.onerror = () => {
+        setError("Recording stopped unexpectedly. Please try again or type your note.");
+        setRecordingState(false);
+        setStatus("error");
+      };
+      recorder.onstop = () => { void finishRecording(recorder.mimeType || mimeType || "audio/webm"); };
+      recorder.start(250);
+      setRecordingState(true);
+      setStatus("recording");
+      startSpeechRecognition();
+      stopTimerRef.current = window.setTimeout(() => stopRecording(), VOICE_MAX_DURATION_MS);
+    } catch (captureError) {
+      setRecordingState(false);
+      setStatus("error");
+      setError(captureError?.name === "NotAllowedError" ? "Microphone access was denied. Allow microphone access in your browser settings or type your note instead." : "We couldn’t start the microphone. Please try again or type your note.");
+    }
+  }
+
+  function stopRecording() {
+    if (stopTimerRef.current) window.clearTimeout(stopTimerRef.current);
+    stopTimerRef.current = null;
+    recognitionRef.current?.stop?.();
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      setStatus("processing");
+      recorder.stop();
+    } else {
+      setRecordingState(false);
+    }
+  }
+
+  async function finishRecording(contentType) {
+    setRecordingState(false);
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    const blob = new Blob(chunksRef.current, { type: contentType });
+    chunksRef.current = [];
+    recorderRef.current = null;
+    if (!blob.size) {
+      setStatus("error");
+      setError("No audio was captured. Please try recording again or type your note.");
+      return;
+    }
+    if (blob.size > VOICE_MAX_BYTES) {
+      setStatus("error");
+      setError("This recording is larger than 16 MB. Please record a shorter note.");
+      return;
+    }
+    let uploaded = null;
+    try {
+      const dataBase64 = await blobToBase64(blob);
+      const response = await fetch("/api/uploads", { method: "POST", headers: { "content-type": "application/json" }, credentials: "include", body: JSON.stringify({ filename: `voice-note-${Date.now()}.${voiceExtension(contentType)}`, contentType: contentType.split(";")[0], dataBase64 }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "The recording could not be uploaded.");
+      uploaded = payload;
+      setAudioPreview({ url: URL.createObjectURL(blob), meta: uploaded });
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "The recording could not be uploaded. You can still use the live transcript.");
+    }
+
+    let finalText = textRef.current.trim();
+    if (!finalText && uploaded?.key) {
+      try {
+        const transcript = await transcribeMutation.mutateAsync({ audioKey: uploaded.key });
+        finalText = transcript.text.trim();
+        updateText(finalText);
+      } catch (transcriptionError) {
+        setError(transcriptionError instanceof Error ? transcriptionError.message : "Audio was saved, but transcription was unavailable. You can type the note instead.");
+      }
+    }
+    setStatus(finalText ? "ready" : "needs-text");
+  }
+
+  function discardRecording() {
+    if (stopTimerRef.current) window.clearTimeout(stopTimerRef.current);
+    stopTimerRef.current = null;
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.onstop = null;
+      try { recorder.stop(); } catch {}
+    }
+    recorderRef.current = null;
+    recognitionRef.current?.abort?.();
+    recognitionRef.current = null;
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    chunksRef.current = [];
+    setRecordingState(false);
+    if (audioPreview?.url) URL.revokeObjectURL(audioPreview.url);
+    setAudioPreview(null);
+    updateText("");
+    setError("");
+    setStatus("idle");
+  }
+
+  async function submit() {
+    const value = textRef.current.trim();
+    if (!value || loading || recording || status === "processing" || transcribeMutation.isPending) return;
+    const accepted = await onSubmit(value, audioPreview?.meta || null);
+    if (accepted === false) return;
+    updateText("");
+    if (audioPreview?.url) URL.revokeObjectURL(audioPreview.url);
+    setAudioPreview(null);
+    setStatus("idle");
+    setError("");
+  }
+
+  const busy = loading || recording || status === "processing" || transcribeMutation.isPending;
   return (
-    <div>
+    <div className="voice-note-box">
       <textarea
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(event) => updateText(event.target.value)}
         placeholder={placeholder || "Record a voice note, or just type it here…"}
         rows={3}
+        aria-label="Voice note text"
         className="w-full text-sm border border-neutral-200 rounded-lg px-3 py-2 resize-none"
       />
-      {!supported && <p className="text-xs text-amber-600 mt-1">Voice recording isn't available in this browser — typing works the same way.</p>}
-      <div className="flex gap-2 mt-2">
-        {supported && (
-          <button
-            onClick={recording ? stopRecording : startRecording}
-            className={`px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-1 ${recording ? "bg-rose-500 text-white" : "bg-neutral-100 text-neutral-700"}`}
-          >
-            {recording ? <Square size={14} /> : <Mic size={14} />}
-            {recording ? "Stop" : "Record"}
-          </button>
-        )}
-        <button onClick={submit} disabled={loading || !text.trim()} className="px-4 py-2 bg-lime-400 text-neutral-950 text-sm font-medium rounded-lg flex items-center gap-1 disabled:opacity-50">
-          <Sparkles size={14} /> {loading ? "Processing…" : "Submit"}
+      {!supported && <p className="text-xs text-amber-700 mt-2" role="status">Audio recording isn’t available in this browser — typing works the same way.</p>}
+      {error && <p className="mt-2 text-xs leading-5 text-rose-700" role="alert">{error}</p>}
+      {status === "recording" && <p className="mt-2 text-xs text-rose-700" role="status" aria-live="polite">Recording up to 5 minutes. Tap Stop when you’re done.</p>}
+      {status === "processing" && <p className="mt-2 text-xs text-neutral-500" role="status" aria-live="polite">Saving your recording and preparing the transcript…</p>}
+      {audioPreview?.url && <audio className="mt-3 w-full" controls preload="metadata" src={audioPreview.url} aria-label="Recorded voice note preview" />}
+      <div className="flex flex-wrap gap-2 mt-3">
+        {supported && <button type="button" onClick={recording ? stopRecording : startRecording} disabled={loading || status === "processing"} aria-pressed={recording} className={`min-h-11 px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 transition-transform active:scale-[0.98] disabled:cursor-wait disabled:opacity-60 ${recording ? "bg-rose-500 text-white" : "bg-neutral-100 text-neutral-700"}`}>
+          {recording ? <Square size={14} /> : <Mic size={14} />}
+          {recording ? "Stop recording" : "Record audio"}
+        </button>}
+        {(!busy && (audioPreview || text || error)) && <button type="button" onClick={discardRecording} className="min-h-11 px-4 py-2 bg-white text-neutral-600 border border-neutral-200 text-sm font-medium rounded-lg transition-transform active:scale-[0.98]">Discard</button>}
+        <button type="button" onClick={submit} disabled={busy || !text.trim()} className="min-h-11 px-4 py-2 bg-lime-400 text-neutral-950 text-sm font-medium rounded-lg flex items-center gap-2 transition-transform active:scale-[0.98] disabled:opacity-50">
+          <Sparkles size={14} /> {loading ? "Processing…" : "Submit note"}
         </button>
       </div>
     </div>
@@ -419,8 +591,7 @@ export default function PersonalLifeOS() {
   const [todayPlan, setTodayPlan] = useState({});
   const [todayDraft, setTodayDraft] = useState({});
   const [debtAction, setDebtAction] = useState(null);
-  const previewMode = import.meta.env.VITE_PREVIEW_MODE === "true";
-  const { user, loading: authLoading, isAuthenticated } = useAuth({ redirectOnUnauthenticated: !previewMode });
+  const { user, loading: authLoading, isAuthenticated, loginWithPin, pinLoginLoading, pinLoginError, logout } = useAuth();
   const snapshotQuery = trpc.dashboard.load.useQuery(undefined, { enabled: isAuthenticated, retry: false });
   const saveSnapshot = trpc.dashboard.save.useMutation();
   const [snapshotReady, setSnapshotReady] = useState(false);
@@ -515,6 +686,7 @@ export default function PersonalLifeOS() {
   const upcomingTodos = [...todos]
     .filter((t) => t.due && t.due > today)
     .sort((a, b) => new Date(a.due) - new Date(b.due));
+  const unfinishedTodos = todos.filter((todo) => !todo.done);
 
   // Finance data
   const [income, setIncome] = useState([
@@ -1127,7 +1299,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
     }
   }
 
-  async function processVoiceNote(transcript) {
+  async function processVoiceNote(transcript, attachment = null) {
     const trimmed = transcript.trim();
     if (!trimmed || voiceUpdateMutation.isPending) return false;
     setVoiceLoading(true);
@@ -1143,14 +1315,14 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
     try {
       const result = await voiceUpdateMutation.mutateAsync({ transcript: trimmed, context });
       if (result.needsConfirmation && result.actions?.length) {
-        setVoiceConfirmation({ summary: result.summary, actions: result.actions, targetTab: result.targetTab, targetSubpage: result.targetSubpage, reason: result.confirmationReason, transcript: trimmed });
+        setVoiceConfirmation({ summary: result.summary, actions: result.actions, targetTab: result.targetTab, targetSubpage: result.targetSubpage, reason: result.confirmationReason, transcript: trimmed, attachment });
         return true;
       }
       applyAIActions(result.actions);
-      setVoiceLog((prev) => [{ id: Date.now(), text: result.summary || "Updated.", count: (result.actions || []).length, time: "Just now" }, ...prev]);
+      setVoiceLog((prev) => [{ id: Date.now(), text: result.summary || "Updated.", count: (result.actions || []).length, time: "Just now", audioUrl: attachment?.url || null, audioKey: attachment?.key || null }, ...prev]);
       return true;
     } catch {
-      setVoiceLog((prev) => [{ id: Date.now(), text: "Couldn't process that note — try again.", count: 0, time: "Just now", failed: true }, ...prev]);
+      setVoiceLog((prev) => [{ id: Date.now(), text: "Couldn't process that note — try again.", count: 0, time: "Just now", failed: true, audioUrl: attachment?.url || null, audioKey: attachment?.key || null }, ...prev]);
       return false;
     } finally {
       setVoiceLoading(false);
@@ -1163,11 +1335,12 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
   useEffect(() => {
     if (rewindStatusQuery.data?.pending) setShowRewind(true);
   }, [rewindStatusQuery.data?.pending]);
-  async function submitRewind(transcript) {
-    const processed = await processVoiceNote(transcript);
-    if (!processed) return;
+  async function submitRewind(transcript, attachment) {
+    const processed = await processVoiceNote(transcript, attachment);
+    if (!processed) return false;
     rewindCompleteMutation.mutate();
     setShowRewind(false);
+    return true;
   }
 
   // Home scores
@@ -1264,7 +1437,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
   if (authLoading || (isAuthenticated && snapshotQuery.isLoading)) {
     return <div className="min-h-screen bg-neutral-100 flex items-center justify-center text-sm text-neutral-500">Loading your workspace…</div>;
   }
-  if (!isAuthenticated && !previewMode) return null;
+  if (!isAuthenticated) return <PinGate loading={pinLoginLoading} error={pinLoginError} onSubmit={loginWithPin} />;
   if (snapshotQuery.error) {
     return <div className="min-h-screen bg-neutral-100 flex items-center justify-center p-6 text-sm text-rose-600">We couldn’t load your workspace right now. Please refresh and try again.</div>;
   }
@@ -1283,7 +1456,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
               <button type="button" aria-label="Close voice log" onClick={() => setShowGlobalVoiceLog(false)} className="dashboard-action w-9 h-9 rounded-full bg-neutral-100 text-neutral-500 flex items-center justify-center"><X size={16} /></button>
             </div>
             <div className="mt-5 rounded-[1.2rem] border border-neutral-100 bg-neutral-50/70 p-4">
-              <VoiceNoteBox onSubmit={async (value) => { const processed = await processVoiceNote(value); if (processed) setShowGlobalVoiceLog(false); }} loading={voiceLoading} placeholder="Say what happened, what needs doing, or what should be updated…" />
+              <VoiceNoteBox onSubmit={async (value, attachment) => { const processed = await processVoiceNote(value, attachment); if (processed) setShowGlobalVoiceLog(false); return processed; }} loading={voiceLoading} placeholder="Say what happened, what needs doing, or what should be updated…" />
             </div>
             <p className="mt-3 text-xs text-neutral-400">Examples: “Mark my gym session complete”, “Add a task to submit my Masters transcript”, or “I paid Nicole RWF 50,000.”</p>
           </div>
@@ -1296,7 +1469,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
           <p className="mt-2 text-sm leading-5 text-white/70">{voiceConfirmation.reason || "The note appears to belong to a different page than the one you were viewing."} Apply it there instead?</p>
           <div className="mt-4 flex justify-end gap-2">
             <button type="button" onClick={() => setVoiceConfirmation(null)} className="dashboard-action rounded-full px-3 py-2 text-xs font-medium text-white/70 hover:bg-white/10">Keep here</button>
-            <button type="button" onClick={() => { navigateToVoiceTarget(voiceConfirmation.targetTab, voiceConfirmation.targetSubpage); applyAIActions(voiceConfirmation.actions); setVoiceLog((prev) => [{ id: Date.now(), text: voiceConfirmation.summary || "Updated.", count: voiceConfirmation.actions.length, time: "Just now" }, ...prev]); setVoiceConfirmation(null); setShowGlobalVoiceLog(false); }} className="dashboard-action rounded-full bg-lime-300 px-3 py-2 text-xs font-semibold text-neutral-950">Apply update</button>
+            <button type="button" onClick={() => { navigateToVoiceTarget(voiceConfirmation.targetTab, voiceConfirmation.targetSubpage); applyAIActions(voiceConfirmation.actions); setVoiceLog((prev) => [{ id: Date.now(), text: voiceConfirmation.summary || "Updated.", count: voiceConfirmation.actions.length, time: "Just now", audioUrl: voiceConfirmation.attachment?.url || null, audioKey: voiceConfirmation.attachment?.key || null }, ...prev]); setVoiceConfirmation(null); setShowGlobalVoiceLog(false); }} className="dashboard-action rounded-full bg-lime-300 px-3 py-2 text-xs font-semibold text-neutral-950">Apply update</button>
           </div>
         </div>
       )}
@@ -1357,6 +1530,9 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
             <button type="button" aria-label="Open voice log" onClick={() => setShowGlobalVoiceLog(true)} className={`dashboard-action relative w-9 h-9 rounded-full flex items-center justify-center ${voiceLoading ? "bg-lime-400 text-neutral-950" : "bg-white text-neutral-500"}`}>
               {voiceLoading ? <span className="absolute inset-0 rounded-full border-2 border-neutral-950/20 border-t-neutral-950 animate-spin" /> : null}
               <Mic size={16} className="relative" />
+            </button>
+            <button type="button" onClick={logout} aria-label="Lock dashboard" title="Lock dashboard" className="dashboard-action w-9 h-9 rounded-full bg-white flex items-center justify-center text-neutral-500">
+              <LockKeyhole size={15} />
             </button>
             <div className="relative">
               <button onClick={() => setShowNotifications((v) => !v)} aria-label="Notifications" className="w-9 h-9 rounded-full bg-white flex items-center justify-center">

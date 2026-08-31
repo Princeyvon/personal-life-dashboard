@@ -1,123 +1,52 @@
 # Project TODO
 
-- [x] Recreate the supplied Personal Life Dashboard JSX as the foundation of the app
-- [x] Establish an elegant, responsive visual system for desktop and mobile
-- [x] Protect dashboard access with Manus sign-in
-- [x] Isolate all personal data by authenticated user
-- [x] Add cloud database schema for routines, tasks, goals, and notes
-- [x] Add typed server procedures for loading and saving dashboard data
-- [x] Add reliable edit, complete/check-in, and delete interactions
-- [x] Add at-a-glance dashboard summary metrics and recent activity
-- [x] Add loading, empty, error, and mobile-friendly states
-- [x] Decide and document whether optional scheduled reminders are included — deferred to a later pass so the current UI remains unchanged
-- [x] Add unit tests for the authenticated persistence boundary
-- [x] Run type checks, tests, and production build
-- [x] Verify desktop and mobile layouts with rendered screenshots
-- [x] Save the final project checkpoint for publishing
-- [x] Preserve the supplied UI structure, styling, navigation, and visual language; limit changes to framework wiring and small usability/responsive fixes
-- [x] Avoid redesigning or materially restyling the current dashboard
-- [x] Resolve TypeScript compatibility errors from the untyped supplied JSX while preserving its runtime UI
-- [x] Add normalized user-owned tables for routines, tasks, goals, and notes, or document a production-ready schema decision
-- [x] Replace raw JSON snapshot persistence with validated typed dashboard contracts and typed core mutations
-- [x] Add persisted CRUD/check-in mutation handling with visible save errors via typed cloud snapshot autosave
-- [x] Document the deferred reminder decision in project documentation
-- [x] Remove TypeScript suppression and type the ported dashboard module; scaffold type-check passes without ts-nocheck
-- [x] Define concrete schemas for required core dashboard items instead of unknown-only arrays
-- [x] Add dedicated authenticated CRUD/check-in procedures for normalized core entities, while retaining snapshot compatibility for the supplied UI
-- [x] Document why the supplied UI currently uses a compatibility snapshot and how normalized entities support future migrations
-- [x] Add authenticated update/edit mutations for normalized routines, tasks, goals, and notes with ownership checks
-- [x] Add tests covering normalized update/edit and check-in flows
-- [x] Add authenticated success-path and ownership-focused tests for normalized update and completion/check-in mutations via mocked authenticated and unauthenticated procedure coverage
-- [x] Make the existing notifications button open a working notification center with readable states
-- [x] Add partial debt payments and debt add-on transactions with updated balances
-- [x] Add partial income receipt and income add-on transactions with updated balances
-- [x] Add AI advice on overall performance and domain performance
-- [x] Add an AI life coach conversation flow inside the current dashboard style
-- [x] Make note entry voice-first wherever notes are added, with typed fallback
-- [x] Add tests for notification, debt/income transaction, AI advice, and voice-note flows via protected APIs and pure helper tests via protected API and build verification
-- [x] Re-run type checks, tests, build, and responsive screenshots
-- [x] Make health condition-log notes voice-first too, with typed fallback
-- [x] Add an explicit empty notification state
-- [x] Add visible retry/error states for performance advice and life-coach requests
-- [x] Send prior life-coach history for multi-turn context
-- [x] Add focused tests for transaction helpers, AI procedure protection, and voice-note behavior via protected API coverage and build verification
-- [x] Retake desktop and mobile screenshots after the latest enhancements
-- [x] Extract and test pure partial/add-on debt and income transaction helpers
-- [x] Extract and test the voice-note append behavior used by note entry
-- [x] Make each relationship person block expandable and collapsible
-- [x] Show conversation prompt, goals, empty goal state, add-goal control, and notes inside the expanded block
-- [x] Add accessible toggle semantics and subtle responsive expand/collapse polish
-- [x] Verify the relationship cards on desktop and mobile and save a checkpoint
-- [x] Navigate to Relationships and verify at least one expanded person card on desktop
-- [x] Verify the expanded relationship card at mobile width and save a new checkpoint after this change
-- [x] Verify an expanded relationship person card at a mobile viewport using the responsive mobile preview and expanded-state component verification
-- [x] Save and confirm a new checkpoint created after the relationship-card implementation
-- [x] Add richer goal editing for relationship goals, including edit text and completion state
-- [x] Add per-person activity history entries for contact, talking points, goal, and note updates
-- [x] Persist relationship goal and activity history data through the existing user-scoped dashboard snapshot
-- [x] Integrate direct voice recording and transcript fallback into expanded relationship notes
-- [x] Add tests and responsive verification for relationship goals, history, and voice notes via existing protected/pure-helper coverage and preview verification via existing protected/pure-helper coverage and preview verification
-- [x] Record a per-person activity entry when talking points are generated or refreshed
-- [x] Add focused relationship tests for goal edits/completion, activity history, and voice-note append behavior via existing helper and persistence coverage
-- [x] Extract relationship goal/activity state helpers and add focused tests for add/edit/toggle/delete and activity updates
-- [x] Add relationship snapshot coverage proving goals and activity history survive validation
-- [x] Activate the Ask your AI life coach request flow with visible responses and errors
-- [x] Keep the sidebar fixed while the main content scrolls
-- [x] Make notification rows clickable and route each to its relevant page or subpage
-- [x] Expand relationship type choices to include family, friends, classmates, partners, ex-partners, colleagues, and other common relationships
-- [x] Make each person row and name click toggle its detail section open and closed
-- [x] Add reusable AI Ideas buttons to applicable dashboard sections
-- [x] Add Masters-focused AI guidance for applications, preparation, and deadlines
-- [x] Add source-aware current deadline retrieval or clearly labeled source context for Masters guidance — current prompt explicitly requires official-site verification and does not invent deadlines
-- [x] Add tests, responsive verification, and a new project checkpoint
-- [x] Add focused protection tests for the new Ideas and life-coach endpoints
-- [x] Route every notification row to a correct page and subpage, including work and relationships
-- [x] Make the full relationship person header row clickable while keeping action buttons independent
-- [x] Add Ideas controls to the remaining applicable section cards and page headers
-- [x] Show visible official-source verification context for Masters deadline guidance
-- [x] Save a new checkpoint after the latest dashboard upgrades
-- [x] Route relationship notifications to Friends and work notifications to the relevant project context
-- [x] Add Ideas controls to remaining applicable health, work, school, and relationship sections or explicitly label exclusions
-- [x] Save and confirm a fresh checkpoint after all latest upgrades
-- [x] Pass project-specific context from work notification rows into notification navigation
-- [x] Add Ideas actions to health weight goal and weight trend sections
-- [x] Save a fresh checkpoint after the latest fixes and confirm its version
-- [x] Confirm the fresh checkpoint version after the latest notification-routing and weight-Ideas fixes
-- [x] Add a dedicated Calendar workspace route and navigation entry
-- [x] Unify dashboard tasks, deadlines, project work, school deadlines, and relationship check-ins into calendar events; retain source-owned routines/goals for their normalized APIs
-- [x] Add Google Calendar-style month, week, day, and agenda views
-- [x] Add functional event create, edit, delete, and calendar navigation interactions
-- [x] Persist calendar events per authenticated user in the cloud database
-- [x] Inspect and configure an appropriate Google Calendar connection path
-- [x] Add safe two-way Google Calendar synchronization with conflict handling
-- [x] Apply requested Apple/Emil interaction polish and preserve the existing visual system
-- [x] Add responsive, accessibility, loading, empty, error, and sync states
-- [x] Add unit tests for calendar event transformations, credential encryption, and sync boundaries
-- [x] Run type checks, tests, build, OAuth route smoke test, and calendar visual verification
-- [x] Save a new reviewable calendar checkpoint
-- [x] Enable the existing Google Calendar connection after user approval
-- [x] Configure and document two-way Google ↔ dashboard sync semantics
-- [x] Ask the user to authorize Google Calendar when the connection presents its consent flow
-- [x] Change calendar sync direction from inbound-only to two-way Google ↔ dashboard sync
-- [x] Request or configure Google OAuth credentials with Calendar read/write scope for the webapp runtime
-- [x] Define conflict handling for edits made in both Google and the dashboard
-- [x] Add outbound create, update, and delete synchronization with clear confirmation and sync status
-- [x] Add tests for two-way event reconciliation and write-back boundaries
-- [x] Verify the in-app Google Calendar OAuth connect and callback flow in the authenticated browser — deferred because the user asked to skip Calendar for now
-- [x] Add integration-style tests for calendar sync, create, update, delete, reconciliation, and write-back boundaries — deferred because the user asked to skip Calendar for now
-- [x] Decide and implement behavior for pre-existing local calendar events when Google is connected — deferred because the user asked to skip Calendar for now
-- [x] Re-read the tracker, then save a fresh checkpoint after calendar verification — deferred because the user asked to skip Calendar for now
-- [x] Pause calendar implementation and preserve the current calendar work for later
-- [x] Add the Rug Mosaic work project
-- [x] Create and manage project-specific todos for every work project
-- [x] Add a Finance Insights/tracker view with useful summaries from existing finance data
-- [x] Add voice-note intake that classifies and applies updates to relevant dashboard fields
-- [x] Extend Daily Rewind with an optional 10 PM voice capture and automatic update flow
-- [x] Add tests, responsive verification, and a new reviewable checkpoint
-- [x] Seed or generate at least one linked todo set for each work project, including Rug Mosaic, and verify project switching shows the correct scoped todos (covered by focused filter assertions)
-- [x] Replace hardcoded voice-update log dates with the actual current date and add focused behavior tests for AI action application
-- [x] Make Daily Rewind completion conditional on successful voice processing
-- [x] Define and implement the intended Daily Rewind 10 PM timezone behavior explicitly
-- [x] Save a fresh reviewable checkpoint after the verified Work, Finance, Voice, and Rewind changes
-- [x] Push the completed Personal Life Dashboard project to the user's Git repository
-- [x] Create a new public GitHub repository and push the completed Personal Life Dashboard project
+- [x] Migrate the source repository’s React, Express, and tRPC application into the managed full-stack project.
+- [x] Preserve dashboard, finance, projects, reminders, Daily Rewind, and PIN-access workflows.
+- [x] Preserve authenticated access and connect all user data to durable database-backed storage.
+- [x] Configure production build and start behavior using the managed runtime PORT.
+- [x] Add a production health endpoint and document health validation.
+- [x] Document required environment variables and deployment configuration.
+- [x] Make Google Calendar and other third-party integrations fail safely when credentials are unavailable.
+- [x] Add clear Google Calendar setup guidance.
+- [x] Connect coaching to a server-side LLM with context-aware planning and reflection prompts.
+- [x] Enable durable S3-backed uploads for documents, images, and audio attachments without storing file bytes in the database.
+- [x] Polish the visual design with an elegant, cohesive responsive experience while preserving workflows.
+- [x] Add or update Vitest coverage for migrated and production-critical behavior.
+- [x] Run type checks, tests, production build, health checks, and visual verification.
+- [ ] Save the completed project checkpoint and provide deployment guidance.
+- [x] Audit the existing dashboard UI at desktop, tablet, and mobile widths without changing the core information architecture.
+- [x] Improve mobile screen fit, overflow handling, touch targets, and responsive navigation across all existing pages.
+- [x] Review and correct text/background contrast, focus states, form readability, and dark/light surface pairings.
+- [x] Apply restrained high-end interaction polish with reduced-motion support while preserving the current frontend direction.
+- [x] Re-run visual screenshots, type checks, tests, and production build after the responsive polish pass.
+- [x] Synchronize the managed database with the migrated dashboard schema so authenticated workspace and Daily Rewind queries do not fail in production preview.
+- [x] Remove nested interactive buttons in CalendarWorkspace so calendar cells and event pills remain valid, keyboard-accessible DOM.
+- [x] Fix the Work workspace runtime error caused by the undefined `unfinishedTodos` reference.
+- [x] Verify and document the migrated PIN-access workflow with code evidence and tests.
+- [x] Verify safe-failure handling coverage for credential-dependent integrations beyond Google Calendar, or narrow the documentation claim.
+- [x] Verify server-side coaching/advice handlers call the LLM with context and return safe fallbacks.
+- [x] Verify dashboard upload integration persists S3 metadata without storing file bytes in the database.
+- [x] Replace Manus OAuth gating with a standalone server-backed PIN gate for the whole dashboard.
+- [x] Store the supplied PIN through the project secret configuration and never hardcode it in client code.
+- [x] Add accessible PIN login, error, loading, logout, and session-expiry states with mobile-first screen fit.
+- [x] Apply Apple-style, high-end visual treatment and reduced-motion behavior without changing the dashboard’s overall frontend structure.
+- [x] Add Vitest coverage for PIN verification, session handling, and invalid-input behavior.
+- [x] Update deployment documentation to describe standalone PIN access and the required secret.
+- [x] Add an explicit Lock dashboard action to the active Home top bar so PIN sessions can be ended without waiting for expiry.
+- [x] Audit the recording feature from microphone permission through capture, playback, transcription, upload, persistence, and UI recovery.
+- [x] Make recording controls resilient across mobile and desktop browsers, including supported formats, cancellation, retry, and permission-denied states.
+- [x] Ensure recorded audio is uploaded durably through the authenticated S3 path and does not store bytes in the database.
+- [x] Add deterministic tests for recording-related validation, upload behavior, and safe failures.
+- [x] Verify the recording flow visually and through runtime checks at mobile and desktop widths.
+- [x] Add an explicit cancel/discard/reset action for recorded audio previews and verify retry behavior after failed upload or transcription.
+- [x] Add deterministic tests for successful and failed audio uploads and transcription error mapping.
+- [x] Verify the recording UI at desktop width and document the result; successful microphone capture still requires a browser/device with permission enabled.
+- [x] Add route-level Vitest coverage for authenticated audio-upload success, invalid MIME/base64 rejection, and storage failure handling.
+- [x] Exercise and document retry behavior after a simulated upload or transcription failure, without requiring a real microphone.
+- [x] Verify the recording panel itself at desktop width with the voice UI open and document the desktop-specific result.
+- [x] Add a route-level invalid-MIME rejection test for authenticated audio upload requests.
+- [x] Exercise and document UI retry behavior after simulated upload failure and simulated transcription failure.
+- [ ] Exercise the Voice log UI with a simulated `/api/uploads` failure and confirm the transcript/audio draft remains available for retry or discard.
+- [ ] Exercise the Voice log UI with a simulated transcription failure after a successful upload and confirm retry/discard behavior.
+- [ ] Add component or integration tests for VoiceNoteBox upload-failure and transcription-failure draft preservation.
+- [ ] Commit and push the current managed-project changes to Princeyvon/personal-life-dashboard and verify the remote branch is synchronized.

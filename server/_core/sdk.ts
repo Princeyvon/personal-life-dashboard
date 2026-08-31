@@ -5,6 +5,7 @@ import { parse as parseCookieHeader } from "cookie";
 import type { Request } from "express";
 import { SignJWT, jwtVerify } from "jose";
 import type { User } from "../../drizzle/schema";
+import { PIN_OPEN_ID } from "@shared/const";
 import * as db from "../db";
 import { ENV } from "./env";
 import type {
@@ -285,38 +286,27 @@ class SDKServer {
       return buildCronUser(userInfo);
     }
 
-    const sessionUserId = session.openId;
-    const signedInAt = new Date();
-    let user = await db.getUserByOpenId(sessionUserId);
-
-    // If user not in DB, sync from OAuth server automatically
-    if (!user) {
-      try {
-        const userInfo = await this.getUserInfoWithJwt(sessionToken ?? "");
+    if (session.openId === PIN_OPEN_ID) {
+      const signedInAt = new Date();
+      let pinUser = await db.getUserByOpenId(PIN_OPEN_ID);
+      if (!pinUser) {
         await db.upsertUser({
-          openId: userInfo.openId,
-          name: userInfo.name || null,
-          email: userInfo.email ?? null,
-          loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
+          openId: PIN_OPEN_ID,
+          name: ENV.ownerName || "Personal Life Dashboard",
+          email: null,
+          loginMethod: "pin",
+          role: "admin",
           lastSignedIn: signedInAt,
         });
-        user = await db.getUserByOpenId(userInfo.openId);
-      } catch (error) {
-        console.error("[Auth] Failed to sync user from OAuth:", error);
-        throw ForbiddenError("Failed to sync user info");
+        pinUser = await db.getUserByOpenId(PIN_OPEN_ID);
+      } else {
+        await db.upsertUser({ openId: PIN_OPEN_ID, lastSignedIn: signedInAt });
       }
+      if (!pinUser) throw ForbiddenError("Dashboard owner could not be loaded");
+      return pinUser;
     }
 
-    if (!user) {
-      throw ForbiddenError("User not found");
-    }
-
-    await db.upsertUser({
-      openId: user.openId,
-      lastSignedIn: signedInAt,
-    });
-
-    return user;
+    throw ForbiddenError("Standalone PIN session required");
   }
 }
 

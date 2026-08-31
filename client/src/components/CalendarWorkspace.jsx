@@ -189,7 +189,7 @@ export default function CalendarWorkspace({ todos, assignments, syllabusEvents, 
   const isWorking = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending || syncMutation.isPending;
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="calendar-workspace flex flex-col gap-5">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-3">
           <button type="button" aria-label="Previous period" onClick={() => go(-1)} className="w-9 h-9 rounded-full bg-white flex items-center justify-center text-neutral-500 transition-transform duration-150 active:scale-[0.97]"><ChevronLeft size={16} /></button>
@@ -211,14 +211,16 @@ export default function CalendarWorkspace({ todos, assignments, syllabusEvents, 
       </div>
 
       {eventsQuery.isLoading ? <div className="rounded-2xl bg-white p-10 text-center text-sm text-neutral-400">Loading your calendar…</div> : (<><>{eventsQuery.error && <div className="rounded-2xl bg-amber-50 px-4 py-3 text-xs text-amber-900">Google Calendar is unavailable here. Your local dashboard schedule is still shown below.</div>}</>{view === "month" ? (
-        <div className="overflow-hidden rounded-2xl bg-white">
+        <div className="calendar-month-scroll overflow-x-auto rounded-2xl bg-white">
+          <div className="calendar-month-grid">
           <div className="grid grid-cols-7 border-b border-neutral-100">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <div key={day} className="px-2 py-3 text-center text-[11px] font-medium uppercase tracking-wide text-neutral-400">{day}</div>)}</div>
           <div className="grid grid-cols-7">
             {monthDays.map((day) => {
               const dayEvents = visibleEvents.filter((event) => dateKey(eventStart(event)) === dateKey(day));
               const muted = day.getMonth() !== cursor.getMonth();
-              return <button type="button" key={day.toISOString()} onDoubleClick={() => openCreate(day)} className={`min-h-[112px] border-b border-r border-neutral-100 p-2 text-left align-top transition-colors hover:bg-neutral-50 ${muted ? "bg-neutral-50/60" : "bg-white"}`}><span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs ${dateKey(day) === dateKey(new Date()) ? "bg-neutral-950 text-white" : muted ? "text-neutral-300" : "text-neutral-600"}`}>{day.getDate()}</span><div className="mt-1 flex flex-col gap-1">{dayEvents.slice(0, 3).map((event) => <EventPill key={event.id} event={event} onClick={setSelected} />)}{dayEvents.length > 3 && <span className="px-2 text-[10px] text-neutral-400">+{dayEvents.length - 3} more</span>}</div></button>;
+              return <div role="button" tabIndex={0} key={day.toISOString()} onDoubleClick={() => openCreate(day)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openCreate(day); } }} className={`min-h-[112px] border-b border-r border-neutral-100 p-2 text-left align-top transition-colors hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-lime-600 ${muted ? "bg-neutral-50/60" : "bg-white"}`}><span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs ${dateKey(day) === dateKey(new Date()) ? "bg-neutral-950 text-white" : muted ? "text-neutral-300" : "text-neutral-600"}`}>{day.getDate()}</span><div className="mt-1 flex flex-col gap-1">{dayEvents.slice(0, 3).map((event) => <EventPill key={event.id} event={event} onClick={setSelected} />)}{dayEvents.length > 3 && <span className="px-2 text-[10px] text-neutral-400">+{dayEvents.length - 3} more</span>}</div></div>;
             })}
+          </div>
           </div>
         </div>
       ) : view === "week" ? (
