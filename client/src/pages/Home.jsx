@@ -9,7 +9,7 @@ import {
   Home, HeartPulse, Wallet, Briefcase, GraduationCap, Users, Bell,
   Plus, TrendingUp, TrendingDown, Droplet, Flame, Moon, Dumbbell, Scale,
   Target, AlertTriangle, Check, Trash2, Pencil, ChevronRight, ChevronLeft, ChevronDown, Gauge, Calendar, RefreshCw, MapPin, Pill, ListTodo,
-  Mic, Square, Sparkles, X, BookOpen, MessageCircle, LockKeyhole
+  Mic, Square, Sparkles, X, BookOpen, MessageCircle
 } from "lucide-react";
 import {
   AreaChart, Area, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -407,66 +407,55 @@ export function VoiceNoteBox({ onSubmit, loading, placeholder }) {
 
 function MobileDock({ items, active, onChange, onVoice }) {
   const activeIndex = Math.max(0, items.findIndex((i) => i.key === active));
-  const vbw = 342;
-  const cx = (activeIndex + 0.5) * (vbw / items.length);
   const leftPct = ((activeIndex + 0.5) / items.length) * 100;
   const ActiveIcon = items[activeIndex]?.icon;
+  const activeLabel = domainMeta[active]?.label || "Home";
 
   return (
     <div className="mobile-dock-shell md:hidden fixed left-0 right-0 bottom-5 flex flex-col items-center gap-3 px-5 z-20">
       <style>{`
-        @keyframes dockPopScale { 0%{transform:scale(.7);} 55%{transform:scale(1.14);} 100%{transform:scale(1);} }
-        .dock-pop-inner { animation: dockPopScale .48s cubic-bezier(.34,1.56,.64,1); }
+        @keyframes dockPopScale { 0%{transform:scale(.72);} 55%{transform:scale(1.08);} 100%{transform:scale(1);} }
+        .dock-pop-inner { animation: dockPopScale .42s cubic-bezier(.32,.72,0,1); }
         @media (prefers-reduced-motion: reduce) { .dock-pop-inner { animation: none; } }
       `}</style>
       {onVoice && <button type="button" className="mobile-voice-cta" onClick={onVoice} aria-label="Open voice log"><span><strong>Voice log</strong><small>Tap to speak</small></span><span className="mobile-voice-wave"><Mic size={20} /></span><Mic size={21} /></button>}
       <div className="mobile-dock-bar relative w-full max-w-[360px]" style={{ height: 64 }}>
-        <svg className="absolute inset-0 w-full h-full overflow-visible" viewBox={`0 0 ${vbw} 64`} preserveAspectRatio="none">
-          <defs>
-            <mask id="dockNotchMask" maskUnits="userSpaceOnUse">
-              <rect x="0" y="0" width={vbw} height="64" fill="#fff" />
-              <circle cx={cx} cy="0" r="30" fill="#000" style={{ transition: "cx .48s cubic-bezier(.34,1.32,.4,1)" }} />
-            </mask>
-          </defs>
-          <rect x="0.5" y="0.5" width={vbw - 1} height="63" rx="26" fill="#0a0a0a" stroke="rgba(255,255,255,0.12)" strokeWidth="1" mask="url(#dockNotchMask)" />
-        </svg>
+        <div className="mobile-dock-backdrop absolute inset-0" aria-hidden="true" />
 
-        <div className="absolute inset-0 flex">
+        <nav className="mobile-dock-items absolute inset-0 flex" aria-label="Dashboard sections">
           {items.map((it) => {
             const isActive = it.key === active;
             const Icon = it.icon;
+            const label = domainMeta[it.key]?.label || "Home";
             return (
               <button
                 key={it.key}
+                type="button"
                 onClick={() => onChange(it.key)}
-                aria-label={domainMeta[it.key]?.label || "Home"}
-                className="flex-1 flex items-center justify-center bg-transparent border-0"
+                aria-label={label}
+                aria-current={isActive ? "page" : undefined}
+                title={label}
+                className={`mobile-dock-button flex-1 flex items-center justify-center bg-transparent border-0 ${isActive ? "is-active" : ""}`}
               >
-                <Icon size={20} className={`transition-all duration-300 ${isActive ? "opacity-0 -translate-y-2 scale-75" : "text-white/60"}`} />
+                <Icon size={19} aria-hidden="true" />
               </button>
             );
           })}
-        </div>
+        </nav>
 
         {ActiveIcon && (
           <div
-            className="absolute w-14 h-14 rounded-full"
-            style={{
-              top: -22,
-              left: `${leftPct}%`,
-              transform: "translateX(-50%)",
-              transition: "left .48s cubic-bezier(.34,1.32,.4,1)",
-            }}
+            className="mobile-dock-active"
+            style={{ "--dock-progress": `${leftPct}%` }}
+            aria-hidden="true"
           >
-            <div
-              key={active}
-              className="dock-pop-inner w-full h-full rounded-full bg-lime-400 flex items-center justify-center"
-              style={{ boxShadow: "0 0 0 6px #F5F5F4, 0 8px 20px -4px rgba(163,230,53,.55)" }}
-            >
-              <ActiveIcon size={20} className="text-neutral-950" />
+            <div key={active} className="dock-pop-inner">
+              <ActiveIcon size={20} />
+              <span className="dock-active-signal" />
             </div>
           </div>
         )}
+        <span className="sr-only" aria-live="polite">Current section: {activeLabel}</span>
       </div>
     </div>
   );
@@ -599,7 +588,7 @@ export default function PersonalLifeOS() {
   const [todayPlan, setTodayPlan] = useState({});
   const [todayDraft, setTodayDraft] = useState({});
   const [debtAction, setDebtAction] = useState(null);
-  const { user, loading: authLoading, isAuthenticated, loginWithPin, pinLoginLoading, pinLoginError, logout } = useAuth();
+  const { user, loading: authLoading, isAuthenticated, loginWithPin, pinLoginLoading, pinLoginError } = useAuth();
   const snapshotQuery = trpc.dashboard.load.useQuery(undefined, { enabled: isAuthenticated, retry: false });
   const saveSnapshot = trpc.dashboard.save.useMutation();
   const [snapshotReady, setSnapshotReady] = useState(false);
@@ -1540,9 +1529,6 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
             <button type="button" aria-label="Open voice log" onClick={() => setShowGlobalVoiceLog(true)} className={`dashboard-action relative w-9 h-9 rounded-full flex items-center justify-center ${voiceLoading ? "bg-lime-400 text-neutral-950" : "bg-white text-neutral-500"}`}>
               {voiceLoading ? <span className="absolute inset-0 rounded-full border-2 border-neutral-950/20 border-t-neutral-950 animate-spin" /> : null}
               <Mic size={16} className="relative" />
-            </button>
-            <button type="button" onClick={logout} aria-label="Lock dashboard" title="Lock dashboard" className="dashboard-action w-9 h-9 rounded-full bg-white flex items-center justify-center text-neutral-500">
-              <LockKeyhole size={15} />
             </button>
             <div className="relative">
               <button onClick={() => setShowNotifications((v) => !v)} aria-label="Notifications" className="w-9 h-9 rounded-full bg-white flex items-center justify-center">

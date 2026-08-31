@@ -273,6 +273,12 @@ class SDKServer {
 
     const session = await this.verifySession(sessionToken);
 
+    // Temporary testing access: protected procedures still receive the same
+    // stable dashboard-owner identity, but no PIN/session is required.
+    if (!session && ENV.dashboardFreeAccess) {
+      return getPinDashboardUser();
+    }
+
     if (!session) {
       throw ForbiddenError("Invalid session cookie");
     }
@@ -287,23 +293,7 @@ class SDKServer {
     }
 
     if (session.openId === PIN_OPEN_ID) {
-      const signedInAt = new Date();
-      let pinUser = await db.getUserByOpenId(PIN_OPEN_ID);
-      if (!pinUser) {
-        await db.upsertUser({
-          openId: PIN_OPEN_ID,
-          name: ENV.ownerName || "Personal Life Dashboard",
-          email: null,
-          loginMethod: "pin",
-          role: "admin",
-          lastSignedIn: signedInAt,
-        });
-        pinUser = await db.getUserByOpenId(PIN_OPEN_ID);
-      } else {
-        await db.upsertUser({ openId: PIN_OPEN_ID, lastSignedIn: signedInAt });
-      }
-      if (!pinUser) throw ForbiddenError("Dashboard owner could not be loaded");
-      return pinUser;
+      return getPinDashboardUser();
     }
 
     throw ForbiddenError("Standalone PIN session required");
@@ -311,6 +301,39 @@ class SDKServer {
 }
 
 const CRON_OPEN_ID_PREFIX = "cron_";
+
+async function getPinDashboardUser(): Promise<AuthenticatedUser> {
+  const signedInAt = new Date();
+  let pinUser = await db.getUserByOpenId(PIN_OPEN_ID);
+  if (!pinUser) {
+    await db.upsertUser({
+      openId: PIN_OPEN_ID,
+      name: ENV.ownerName || "Personal Life Dashboard",
+      email: null,
+      loginMethod: "pin",
+      role: "admin",
+      lastSignedIn: signedInAt,
+    });
+    pinUser = await db.getUserByOpenId(PIN_OPEN_ID);
+  } else {
+    await db.upsertUser({ openId: PIN_OPEN_ID, lastSignedIn: signedInAt });
+  }
+  if (!pinUser) {
+    // Local free-access previews may intentionally run without a database.
+    return {
+      id: 0,
+      openId: PIN_OPEN_ID,
+      name: ENV.ownerName || "Personal Life Dashboard",
+      email: null,
+      loginMethod: "pin",
+      role: "admin",
+      createdAt: signedInAt,
+      updatedAt: signedInAt,
+      lastSignedIn: signedInAt,
+    };
+  }
+  return pinUser;
+}
 
 /** Result of `sdk.authenticateRequest`. Cron callbacks set `isCron=true` and `taskUid`; see `/home/ubuntu/skills/webdev-periodic-updates/SKILL.md`. */
 export type AuthenticatedUser = User & {

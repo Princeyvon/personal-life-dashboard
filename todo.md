@@ -65,3 +65,4 @@
 - [x] Publish and verify the latest Georgetown UI build so Weekly availability is visible to users.
 - [x] Do not create date-specific local calendar records yet; the user provided weekly availability but no semester start/end dates or timezone, so the schedule is persisted in the Georgetown workspace instead.
 - [x] Re-check the live Georgetown workspace after deployment and confirm both classes and weekly availability render correctly.
+- [ ] Keep `DASHBOARD_FREE_ACCESS` enabled only during testing; set it to `false` and restore the PIN gate before sharing or publishing the dashboard publicly.
