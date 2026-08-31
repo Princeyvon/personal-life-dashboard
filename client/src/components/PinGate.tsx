@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
+export const PIN_GATE_STORY_CLASS = "pin-gate-story relative hidden min-h-[17rem] flex-col justify-between overflow-hidden rounded-[1.6rem] bg-neutral-950 p-7 text-white sm:p-10 md:flex md:min-h-[34rem]";
+
 type PinGateProps = {
   loading: boolean;
   error: string | null;
@@ -41,7 +43,7 @@ export default function PinGate({ loading, error, onSubmit }: PinGateProps) {
 
       <div className="relative z-10 mx-auto flex min-h-[calc(100dvh-3rem)] w-full max-w-5xl items-center justify-center sm:min-h-[calc(100dvh-5rem)]">
         <section className="pin-gate-shell grid w-full overflow-hidden rounded-[2rem] bg-white/70 p-1.5 shadow-[0_24px_80px_rgba(40,54,30,0.12)] ring-1 ring-neutral-950/5 backdrop-blur-xl md:grid-cols-[0.92fr_1.08fr]">
-          <div className="pin-gate-story relative flex min-h-[17rem] flex-col justify-between overflow-hidden rounded-[1.6rem] bg-neutral-950 p-7 text-white sm:p-10 md:min-h-[34rem]">
+          <div className={PIN_GATE_STORY_CLASS}>
             <div className="pin-gate-story-glow" aria-hidden="true" />
             <div className="relative z-10 flex items-center gap-3">
               <span className="pin-gate-mark" aria-hidden="true"><span /></span>
