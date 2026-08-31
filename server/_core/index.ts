@@ -3,9 +3,12 @@ import express from "express";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
+import { registerPinRoutes } from "../pin";
 import { registerStorageProxy } from "./storageProxy";
 import { registerGoogleCalendarRoutes } from "../googleCalendarRoutes";
 import { registerDailyRewindRoutes } from "../dailyRewindRoutes";
+import { registerUploadRoutes } from "../uploads";
+import { getHealthStatus } from "../health";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
@@ -36,8 +39,11 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
+  registerPinRoutes(app);
   registerGoogleCalendarRoutes(app);
   registerDailyRewindRoutes(app);
+  registerUploadRoutes(app);
+  app.get("/healthz", (_req, res) => res.status(200).json(getHealthStatus()));
   // tRPC API
   app.use(
     "/api/trpc",
@@ -54,7 +60,7 @@ async function startServer() {
   }
 
   const preferredPort = parseInt(process.env.PORT || "3000");
-  const port = await findAvailablePort(preferredPort);
+  const port = process.env.NODE_ENV === "production" ? preferredPort : await findAvailablePort(preferredPort);
 
   if (port !== preferredPort) {
     console.log(`Port ${preferredPort} is busy, using port ${port} instead`);

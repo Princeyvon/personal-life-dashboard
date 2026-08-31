@@ -47,9 +47,13 @@ type VoiceUpdateState = {
   debts: any[];
   income: any[];
   workouts: any[];
+  liftLog?: any[];
   weight: any[];
   sleep: any[];
   conditionLog: any[];
+  diseases?: any[];
+  diseaseArchive?: any[];
+  healthSchedules?: any[];
 };
 
 export function filterTodosForProject(todos: any[], projectId: string | number, projectName = "") {
@@ -73,6 +77,13 @@ export function applyVoiceActionToState(state: VoiceUpdateState, action: any, da
       return { ...state, income: state.income.map((row) => row.id !== action.incomeId ? row : applyIncomeReceipt(row, Number(action.amount || 0))) };
     case "log_workout":
       return { ...state, workouts: [{ id, date, type: action.workoutType || "Workout", duration: action.duration || "—" }, ...state.workouts] };
+    case "log_lift": {
+      const load = Number(action.load);
+      const reps = Number(action.reps);
+      const sets = Number(action.sets || 1);
+      if (!action.exercise || !Number.isFinite(load) || load <= 0 || !Number.isFinite(reps) || reps <= 0) return state;
+      return { ...state, liftLog: [{ id, date, exercise: action.exercise, load, unit: "kg", reps, sets, note: action.note || "" }, ...(state.liftLog || [])] };
+    }
     case "log_weight": {
       const weight = Number(action.weight);
       if (!Number.isFinite(weight) || weight <= 0) return state;
@@ -81,10 +92,23 @@ export function applyVoiceActionToState(state: VoiceUpdateState, action: any, da
     case "log_sleep": {
       const hours = Number(action.hours);
       if (!Number.isFinite(hours) || hours < 0 || hours > 24) return state;
-      return { ...state, sleep: [...state.sleep.filter((row) => row.date !== date), { date, hours }] };
+      return { ...state, sleep: [...state.sleep.filter((row) => row.date !== date), { date, hours, bedtime: action.bedtime || "", wake: action.wake || "", quality: action.quality || "" }] };
     }
     case "log_condition":
       return { ...state, conditionLog: [{ id, date, note: action.note || "No note", medTaken: Boolean(action.medTaken) }, ...state.conditionLog] };
+    case "update_disease_status": {
+      if (!state.diseases?.length) return state;
+      const disease = state.diseases.find((item) => String(item.id) === String(action.diseaseId));
+      if (!disease) return state;
+      const status = action.diseaseStatus || "Resolved";
+      if (status !== "Resolved") return { ...state, diseases: state.diseases.map((item) => String(item.id) === String(action.diseaseId) ? { ...item, status } : item) };
+      const resolved = { ...disease, status: "Resolved", resolvedOn: date };
+      return { ...state, diseases: state.diseases.filter((item) => String(item.id) !== String(action.diseaseId)), diseaseArchive: [{ ...resolved, id: `${id}-archive` }, ...(state.diseaseArchive || [])] };
+    }
+    case "add_health_schedule": {
+      if (!action.scheduleTitle || !action.scheduleTime) return state;
+      return { ...state, healthSchedules: [{ id, title: action.scheduleTitle, time: action.scheduleTime, cadence: action.scheduleCadence || "Daily", enabled: action.scheduleEnabled !== false }, ...(state.healthSchedules || [])] };
+    }
     default:
       return state;
   }

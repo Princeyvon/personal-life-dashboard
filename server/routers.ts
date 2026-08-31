@@ -1,12 +1,10 @@
-import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
+import { COOKIE_NAME, PIN_OPEN_ID } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
-import { sdk } from "./_core/sdk";
-import { ENV } from "./_core/env";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import { eq, and } from "drizzle-orm";
-import { getDb, getPrimaryUser, getUserByOpenId, upsertUser } from "./db";
+import { getDb } from "./db";
 import { routines, tasks, goals, notes } from "../drizzle/schema";
 import { getDashboardSnapshot, saveDashboardSnapshot } from "./db";
 import { dashboardSnapshotSchema } from "@shared/dashboard";
@@ -15,32 +13,25 @@ import { TRPCError } from "@trpc/server";
 import { parse as parseCookie } from "cookie";
 import { createHeartbeatJob, updateHeartbeatJob } from "./_core/heartbeat";
 import { getDailyRewindSettings, saveDailyRewindSettings } from "./dailyRewindDb";
-import { googleCalendarConnections } from "../drizzle/schema";
+import { calendarEvents } from "../drizzle/schema";
 import { deleteCalendarEvent, deleteGoogleEventsNotIn, findCalendarEventByGoogleId, getCalendarConnection, getCalendarEvent, insertCalendarEvent, listCalendarEvents, saveCalendarConnection, updateCalendarConnectionSync, updateCalendarEvent } from "./calendarDb";
 import { calendarEventToGoogleEvent, createGoogleEvent, deleteGoogleEvent, decryptCredentials, encryptCredentials, exchangeGoogleCode, googleEventToCalendarEvent, listGoogleEvents, refreshGoogleCredentials, updateGoogleEvent } from "./googleCalendar";
+import { transcribeAudio } from "./_core/voiceTranscription";
+import { storageGetSignedUrl } from "./storage";
+
+export function transcriptionErrorToTrpcCode(code: string) {
+  return code === "FILE_TOO_LARGE" || code === "INVALID_FORMAT" ? "BAD_REQUEST" as const : "INTERNAL_SERVER_ERROR" as const;
+}
 
 export const appRouter = router({
     // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
-    pinLogin: publicProcedure.input(z.object({ pin: z.string().regex(/^\d{4,8}$/, "PIN must be 4 to 8 digits") })).mutation(async ({ ctx, input }) => {
-      if (!ENV.pinLoginInitialPin || input.pin !== ENV.pinLoginInitialPin) throw new TRPCError({ code: "UNAUTHORIZED", message: "Incorrect PIN." });
-      const configuredOwner = ENV.ownerOpenId ? await getUserByOpenId(ENV.ownerOpenId) : undefined;
-      // Preserve the existing cloud account when the deployment does not expose OWNER_OPEN_ID.
-      const existingOwner = configuredOwner || await getPrimaryUser();
-      const openId = existingOwner?.openId || ENV.ownerOpenId || "pin-owner";
-      const signedInAt = new Date();
-      await upsertUser({ openId, name: existingOwner?.name || ENV.ownerName, email: existingOwner?.email || null, loginMethod: "pin", lastSignedIn: signedInAt });
-      const user = await getUserByOpenId(openId);
-      if (!user) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Unable to initialize the PIN account." });
-      const sessionToken = await sdk.signSession({ openId, appId: ENV.appId || "pin-login", name: user.name || ENV.ownerName }, { expiresInMs: ONE_YEAR_MS });
-      ctx.res.cookie(COOKIE_NAME, sessionToken, getSessionCookieOptions(ctx.req));
-      return { success: true as const, user };
-    }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
-      ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+      const pinSession = ctx.user?.openId === PIN_OPEN_ID;
+      ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, sameSite: pinSession ? "lax" : cookieOptions.sameSite, maxAge: -1 });
       return {
         success: true,
       } as const;
@@ -64,19 +55,32 @@ export const appRouter = router({
       const response = await invokeLLM({
         model: "gpt-5-mini",
         messages: [
-          { role: "system", content: "You are the structured update engine for a private personal life dashboard. Classify only changes clearly supported by the voice transcript. Never invent IDs or values. Return JSON with a short summary and safe actions. Supported actions: add_todo {text,due,time,domain}; update_task_status {taskId,status}; log_debt_payment {debtId,amount}; log_income_payment {incomeId,amount}; log_workout {workoutType,duration}; log_weight {weight}; log_sleep {hours}; log_condition {note,medTaken}." },
+          { role: "system", content: "You are the structured update engine for a private personal life dashboard. Classify only changes clearly supported by the voice transcript. Never invent IDs or values. All monetary amounts are RWF and must be returned as plain numbers in the amount field. Use the current page and subpage in the context as the default target. If the transcript clearly belongs to a different page or subpage than the current context, do not silently apply it: set needsConfirmation to true, identify targetTab and targetSubpage, explain confirmationReason, and still return the safe actions. Return JSON with a short summary, confirmation metadata, and safe actions. Supported actions: add_todo {text,due,time,domain}; update_task_status {taskId,status}; log_debt_payment {debtId,amount}; log_income_payment {incomeId,amount}; log_workout {workoutType,duration}; log_lift {exercise,load,reps,sets,note}; log_weight {weight}; log_sleep {hours,bedtime,wake,quality}; log_condition {note,medTaken}; update_disease_status {diseaseId,diseaseStatus}; add_health_schedule {scheduleTitle,scheduleTime,scheduleCadence,scheduleEnabled}." },
           { role: "user", content: `Current dashboard context:\n${input.context}\n\nVoice transcript:\n${input.transcript}` },
         ],
-        response_format: { type: "json_schema", json_schema: { name: "dashboard_voice_update", strict: true, schema: { type: "object", additionalProperties: false, properties: { summary: { type: "string" }, actions: { type: "array", items: { type: "object", additionalProperties: false, properties: { type: { type: "string" }, text: { type: "string" }, due: { type: "string" }, time: { type: "string" }, domain: { type: "string" }, taskId: { type: ["integer", "null"] }, status: { type: "string" }, debtId: { type: ["integer", "null"] }, incomeId: { type: ["integer", "null"] }, amount: { type: ["number", "null"] }, workoutType: { type: "string" }, duration: { type: "string" }, weight: { type: ["number", "null"] }, hours: { type: ["number", "null"] }, note: { type: "string" }, medTaken: { type: ["boolean", "null"] } }, required: ["type", "text", "due", "time", "domain", "taskId", "status", "debtId", "incomeId", "amount", "workoutType", "duration", "weight", "hours", "note", "medTaken"] } } }, required: ["summary", "actions"] } } },
+        response_format: { type: "json_schema", json_schema: { name: "dashboard_voice_update", strict: true, schema: { type: "object", additionalProperties: false, properties: { summary: { type: "string" }, needsConfirmation: { type: "boolean" }, targetTab: { type: "string" }, targetSubpage: { type: "string" }, confirmationReason: { type: "string" }, actions: { type: "array", items: { type: "object", additionalProperties: false, properties: { type: { type: "string" }, text: { type: "string" }, due: { type: "string" }, time: { type: "string" }, domain: { type: "string" }, taskId: { type: ["integer", "null"] }, status: { type: "string" }, debtId: { type: ["integer", "null"] }, incomeId: { type: ["integer", "null"] }, amount: { type: ["number", "null"] }, workoutType: { type: "string" }, duration: { type: "string" }, weight: { type: ["number", "null"] }, exercise: { type: "string" }, load: { type: ["number", "null"] }, reps: { type: ["number", "null"] }, sets: { type: ["number", "null"] }, hours: { type: ["number", "null"] }, bedtime: { type: "string" }, wake: { type: "string" }, quality: { type: "string" }, diseaseId: { type: ["integer", "null"] }, diseaseStatus: { type: "string" }, scheduleTitle: { type: "string" }, scheduleTime: { type: "string" }, scheduleCadence: { type: "string" }, scheduleEnabled: { type: ["boolean", "null"] }, note: { type: "string" }, medTaken: { type: ["boolean", "null"] } }, required: ["type", "text", "due", "time", "domain", "taskId", "status", "debtId", "incomeId", "amount", "workoutType", "duration", "weight", "exercise", "load", "reps", "sets", "hours", "bedtime", "wake", "quality", "diseaseId", "diseaseStatus", "scheduleTitle", "scheduleTime", "scheduleCadence", "scheduleEnabled", "note", "medTaken"] } } }, required: ["summary", "needsConfirmation", "targetTab", "targetSubpage", "confirmationReason", "actions"] } } },
       });
       const content = response.choices?.[0]?.message?.content;
-      if (typeof content !== "string") return { summary: "I couldn’t understand that update.", actions: [] };
+      if (typeof content !== "string") return { summary: "I couldn’t understand that update.", needsConfirmation: false, targetTab: "", targetSubpage: "", confirmationReason: "", actions: [] };
       try {
         const parsed = JSON.parse(content);
-        return { summary: typeof parsed.summary === "string" ? parsed.summary : "Updated.", actions: Array.isArray(parsed.actions) ? parsed.actions : [] };
+        return { summary: typeof parsed.summary === "string" ? parsed.summary : "Updated.", needsConfirmation: Boolean(parsed.needsConfirmation), targetTab: typeof parsed.targetTab === "string" ? parsed.targetTab : "", targetSubpage: typeof parsed.targetSubpage === "string" ? parsed.targetSubpage : "", confirmationReason: typeof parsed.confirmationReason === "string" ? parsed.confirmationReason : "", actions: Array.isArray(parsed.actions) ? parsed.actions : [] };
       } catch {
-        return { summary: "I couldn’t understand that update.", actions: [] };
+        return { summary: "I couldn’t understand that update.", needsConfirmation: false, targetTab: "", targetSubpage: "", confirmationReason: "", actions: [] };
       }
+    }),
+  }),
+
+  voice: router({
+    transcribe: protectedProcedure.input(z.object({ audioKey: z.string().min(1).max(500) })).mutation(async ({ ctx, input }) => {
+      const ownerPrefix = `users/${ctx.user.id}/attachments/`;
+      if (!input.audioKey.startsWith(ownerPrefix)) throw new TRPCError({ code: "FORBIDDEN", message: "Audio attachment does not belong to this dashboard." });
+      const audioUrl = await storageGetSignedUrl(input.audioKey);
+      const result = await transcribeAudio({ audioUrl, language: "en", prompt: "Transcribe this personal dashboard voice note accurately and preserve names, numbers, and action words." });
+      if ("error" in result) {
+        throw new TRPCError({ code: transcriptionErrorToTrpcCode(result.code), message: result.error });
+      }
+      return result;
     }),
   }),
 
@@ -87,8 +91,9 @@ export const appRouter = router({
     }),
     setEnabled: protectedProcedure.input(z.object({ enabled: z.boolean(), timezone: z.string().min(1).max(100).optional() })).mutation(async ({ ctx, input }) => {
       const existing = await getDailyRewindSettings(ctx.user.id);
-      const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
-      if (!sessionToken) throw new TRPCError({ code: "UNAUTHORIZED", message: "Session required to schedule Daily Rewind." });
+      const pinSession = ctx.user.openId === PIN_OPEN_ID;
+      const sessionToken = pinSession ? "" : parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+      if (!pinSession && !sessionToken) throw new TRPCError({ code: "UNAUTHORIZED", message: "Session required to schedule Daily Rewind." });
       if (!input.enabled) {
         if (existing?.scheduleCronTaskUid) await updateHeartbeatJob(existing.scheduleCronTaskUid, { enable: false }, sessionToken);
         return saveDailyRewindSettings(ctx.user.id, { enabled: 0 });

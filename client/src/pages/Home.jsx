@@ -2,13 +2,14 @@ import React, { useState, useMemo, useRef, useEffect } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import CalendarWorkspace from "@/components/CalendarWorkspace";
+import PinGate from "@/components/PinGate";
 import { applyIncomeReceipt, addIncomeExpected, applyDebtPayment, addDebtPrincipal, appendVoiceNote, buildFinanceInsights, applyVoiceActionToState, filterTodosForProject } from "@shared/interactionHelpers";
 import { addRelationshipGoal, editRelationshipGoal, toggleRelationshipGoal, deleteRelationshipGoal } from "@shared/relationshipHelpers";
 import {
-  Home, HeartPulse, Wallet, Briefcase, GraduationCap, Users, Search, Bell,
+  Home, HeartPulse, Wallet, Briefcase, GraduationCap, Users, Bell,
   Plus, TrendingUp, TrendingDown, Droplet, Flame, Moon, Dumbbell, Scale,
   Target, AlertTriangle, Check, Trash2, Pencil, ChevronRight, ChevronLeft, ChevronDown, Gauge, Calendar, RefreshCw, MapPin, Pill, ListTodo,
-  Mic, Square, Sparkles, X, BookOpen, MessageCircle, LogOut
+  Mic, Square, Sparkles, X, BookOpen, MessageCircle, LockKeyhole
 } from "lucide-react";
 import {
   AreaChart, Area, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -34,7 +35,7 @@ const colorMap = {
 };
 
 function fmt(n) {
-  return Math.round(n).toLocaleString();
+  return `RWF ${Math.round(Number(n) || 0).toLocaleString("en-RW")}`;
 }
 
 // ---------- shared UI ----------
@@ -42,7 +43,7 @@ function fmt(n) {
 function StatCard({ icon: Icon, iconColor, label, value, delta, positive }) {
   const c = colorMap[iconColor];
   return (
-    <div className="bg-white rounded-2xl p-5 flex-1 min-w-[150px]">
+    <div className="dashboard-card bg-white rounded-[1.35rem] p-5 flex-1 min-w-[150px]">
       <div className="flex items-center justify-between mb-4">
         <span className="text-sm text-neutral-500">{label}</span>
         <div className={`w-8 h-8 rounded-full ${c.badgeBg} flex items-center justify-center`}>
@@ -106,13 +107,13 @@ function ScoreRing({ label, score, colorKey }) {
 
 function SectionCard({ title, right, children }) {
   return (
-    <div className="bg-white rounded-2xl p-5">
+    <section className="dashboard-card bg-white rounded-[1.35rem] p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-base font-semibold text-neutral-900">{title}</h3>
         {right}
       </div>
       {children}
-    </div>
+    </section>
   );
 }
 
@@ -140,7 +141,7 @@ function ViewTabs({ views, active, onChange }) {
 
 function SubTabs({ tabs, active, onChange }) {
   return (
-    <div className="flex gap-2 flex-wrap">
+    <div className="dashboard-tabbar flex gap-2 flex-wrap rounded-full">
       {tabs.map((t) => (
         <button
           key={t.key}
@@ -156,76 +157,247 @@ function SubTabs({ tabs, active, onChange }) {
   );
 }
 
+const VOICE_MAX_BYTES = 16 * 1024 * 1024;
+const VOICE_MAX_DURATION_MS = 5 * 60 * 1000;
+
+function getVoiceMimeType() {
+  if (typeof window === "undefined" || !window.MediaRecorder) return "";
+  return ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus", "audio/wav"].find((type) => window.MediaRecorder.isTypeSupported?.(type)) || "";
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      resolve(result.includes(",") ? result.slice(result.indexOf(",") + 1) : result);
+    };
+    reader.onerror = () => reject(new Error("The recording could not be prepared for upload."));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function voiceExtension(contentType) {
+  if (contentType.includes("mp4")) return "m4a";
+  if (contentType.includes("ogg")) return "ogg";
+  if (contentType.includes("wav")) return "wav";
+  return "webm";
+}
+
 function VoiceNoteBox({ onSubmit, loading, placeholder }) {
   const [text, setText] = useState("");
   const [recording, setRecording] = useState(false);
   const [supported, setSupported] = useState(true);
+  const [status, setStatus] = useState("idle");
+  const [error, setError] = useState("");
+  const [audioPreview, setAudioPreview] = useState(null);
   const recognitionRef = useRef(null);
+  const recorderRef = useRef(null);
+  const streamRef = useRef(null);
+  const chunksRef = useRef([]);
+  const stopTimerRef = useRef(null);
+  const textRef = useRef("");
+  const recordingRef = useRef(false);
+  const transcribeMutation = trpc.voice.transcribe.useMutation();
 
-  function startRecording() {
+  useEffect(() => {
+    textRef.current = text;
+  }, [text]);
+
+  useEffect(() => () => {
+    if (audioPreview?.url) URL.revokeObjectURL(audioPreview.url);
+    if (stopTimerRef.current) window.clearTimeout(stopTimerRef.current);
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    recognitionRef.current?.abort?.();
+  }, [audioPreview]);
+
+  function updateText(value) {
+    textRef.current = value;
+    setText(value);
+  }
+
+  function setRecordingState(value) {
+    recordingRef.current = value;
+    setRecording(value);
+  }
+
+  function startSpeechRecognition() {
     const SR = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
-    if (!SR) {
-      setSupported(false);
-      return;
-    }
+    if (!SR) return;
     const recognition = new SR();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
-    recognition.onresult = (e) => {
+    recognition.onresult = (event) => {
       let transcript = "";
-      for (let i = 0; i < e.results.length; i++) transcript += e.results[i][0].transcript;
-      setText(transcript);
+      for (let i = 0; i < event.results.length; i += 1) transcript += event.results[i][0].transcript;
+      updateText(transcript);
     };
-    recognition.onerror = () => setRecording(false);
-    recognition.onend = () => setRecording(false);
+    recognition.onerror = (event) => {
+      if (event.error !== "aborted" && event.error !== "no-speech") setError("Live captions are unavailable, but your audio is still being recorded.");
+    };
+    recognition.onend = () => {
+      if (recordingRef.current && recorderRef.current?.state === "recording") {
+        try { recognition.start(); } catch {}
+      }
+    };
     recognitionRef.current = recognition;
-    try {
-      recognition.start();
-      setRecording(true);
-    } catch {
-      setSupported(false);
-    }
-  }
-  function stopRecording() {
-    recognitionRef.current?.stop();
-    setRecording(false);
-  }
-  function submit() {
-    if (!text.trim() || loading) return;
-    onSubmit(text.trim());
-    setText("");
+    try { recognition.start(); } catch { recognitionRef.current = null; }
   }
 
+  async function startRecording() {
+    setError("");
+    if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      setSupported(false);
+      setError("Audio recording is not supported here. You can still type the note below.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      const mimeType = getVoiceMimeType();
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      streamRef.current = stream;
+      chunksRef.current = [];
+      recorderRef.current = recorder;
+      recorder.ondataavailable = (event) => { if (event.data?.size) chunksRef.current.push(event.data); };
+      recorder.onerror = () => {
+        setError("Recording stopped unexpectedly. Please try again or type your note.");
+        setRecordingState(false);
+        setStatus("error");
+      };
+      recorder.onstop = () => { void finishRecording(recorder.mimeType || mimeType || "audio/webm"); };
+      recorder.start(250);
+      setRecordingState(true);
+      setStatus("recording");
+      startSpeechRecognition();
+      stopTimerRef.current = window.setTimeout(() => stopRecording(), VOICE_MAX_DURATION_MS);
+    } catch (captureError) {
+      setRecordingState(false);
+      setStatus("error");
+      setError(captureError?.name === "NotAllowedError" ? "Microphone access was denied. Allow microphone access in your browser settings or type your note instead." : "We couldn’t start the microphone. Please try again or type your note.");
+    }
+  }
+
+  function stopRecording() {
+    if (stopTimerRef.current) window.clearTimeout(stopTimerRef.current);
+    stopTimerRef.current = null;
+    recognitionRef.current?.stop?.();
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      setStatus("processing");
+      recorder.stop();
+    } else {
+      setRecordingState(false);
+    }
+  }
+
+  async function finishRecording(contentType) {
+    setRecordingState(false);
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    const blob = new Blob(chunksRef.current, { type: contentType });
+    chunksRef.current = [];
+    recorderRef.current = null;
+    if (!blob.size) {
+      setStatus("error");
+      setError("No audio was captured. Please try recording again or type your note.");
+      return;
+    }
+    if (blob.size > VOICE_MAX_BYTES) {
+      setStatus("error");
+      setError("This recording is larger than 16 MB. Please record a shorter note.");
+      return;
+    }
+    let uploaded = null;
+    try {
+      const dataBase64 = await blobToBase64(blob);
+      const response = await fetch("/api/uploads", { method: "POST", headers: { "content-type": "application/json" }, credentials: "include", body: JSON.stringify({ filename: `voice-note-${Date.now()}.${voiceExtension(contentType)}`, contentType: contentType.split(";")[0], dataBase64 }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "The recording could not be uploaded.");
+      uploaded = payload;
+      setAudioPreview({ url: URL.createObjectURL(blob), meta: uploaded });
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "The recording could not be uploaded. You can still use the live transcript.");
+    }
+
+    let finalText = textRef.current.trim();
+    if (!finalText && uploaded?.key) {
+      try {
+        const transcript = await transcribeMutation.mutateAsync({ audioKey: uploaded.key });
+        finalText = transcript.text.trim();
+        updateText(finalText);
+      } catch (transcriptionError) {
+        setError(transcriptionError instanceof Error ? transcriptionError.message : "Audio was saved, but transcription was unavailable. You can type the note instead.");
+      }
+    }
+    setStatus(finalText ? "ready" : "needs-text");
+  }
+
+  function discardRecording() {
+    if (stopTimerRef.current) window.clearTimeout(stopTimerRef.current);
+    stopTimerRef.current = null;
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.onstop = null;
+      try { recorder.stop(); } catch {}
+    }
+    recorderRef.current = null;
+    recognitionRef.current?.abort?.();
+    recognitionRef.current = null;
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    chunksRef.current = [];
+    setRecordingState(false);
+    if (audioPreview?.url) URL.revokeObjectURL(audioPreview.url);
+    setAudioPreview(null);
+    updateText("");
+    setError("");
+    setStatus("idle");
+  }
+
+  async function submit() {
+    const value = textRef.current.trim();
+    if (!value || loading || recording || status === "processing" || transcribeMutation.isPending) return;
+    const accepted = await onSubmit(value, audioPreview?.meta || null);
+    if (accepted === false) return;
+    updateText("");
+    if (audioPreview?.url) URL.revokeObjectURL(audioPreview.url);
+    setAudioPreview(null);
+    setStatus("idle");
+    setError("");
+  }
+
+  const busy = loading || recording || status === "processing" || transcribeMutation.isPending;
   return (
-    <div>
+    <div className="voice-note-box">
       <textarea
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(event) => updateText(event.target.value)}
         placeholder={placeholder || "Record a voice note, or just type it here…"}
         rows={3}
+        aria-label="Voice note text"
         className="w-full text-sm border border-neutral-200 rounded-lg px-3 py-2 resize-none"
       />
-      {!supported && <p className="text-xs text-amber-600 mt-1">Voice recording isn't available in this browser — typing works the same way.</p>}
-      <div className="flex gap-2 mt-2">
-        {supported && (
-          <button
-            onClick={recording ? stopRecording : startRecording}
-            className={`px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-1 ${recording ? "bg-rose-500 text-white" : "bg-neutral-100 text-neutral-700"}`}
-          >
-            {recording ? <Square size={14} /> : <Mic size={14} />}
-            {recording ? "Stop" : "Record"}
-          </button>
-        )}
-        <button onClick={submit} disabled={loading || !text.trim()} className="px-4 py-2 bg-lime-400 text-neutral-950 text-sm font-medium rounded-lg flex items-center gap-1 disabled:opacity-50">
-          <Sparkles size={14} /> {loading ? "Processing…" : "Submit"}
+      {!supported && <p className="text-xs text-amber-700 mt-2" role="status">Audio recording isn’t available in this browser — typing works the same way.</p>}
+      {error && <p className="mt-2 text-xs leading-5 text-rose-700" role="alert">{error}</p>}
+      {status === "recording" && <p className="mt-2 text-xs text-rose-700" role="status" aria-live="polite">Recording up to 5 minutes. Tap Stop when you’re done.</p>}
+      {status === "processing" && <p className="mt-2 text-xs text-neutral-500" role="status" aria-live="polite">Saving your recording and preparing the transcript…</p>}
+      {audioPreview?.url && <audio className="mt-3 w-full" controls preload="metadata" src={audioPreview.url} aria-label="Recorded voice note preview" />}
+      <div className="flex flex-wrap gap-2 mt-3">
+        {supported && <button type="button" onClick={recording ? stopRecording : startRecording} disabled={loading || status === "processing"} aria-pressed={recording} className={`min-h-11 px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 transition-transform active:scale-[0.98] disabled:cursor-wait disabled:opacity-60 ${recording ? "bg-rose-500 text-white" : "bg-neutral-100 text-neutral-700"}`}>
+          {recording ? <Square size={14} /> : <Mic size={14} />}
+          {recording ? "Stop recording" : "Record audio"}
+        </button>}
+        {(!busy && (audioPreview || text || error)) && <button type="button" onClick={discardRecording} className="min-h-11 px-4 py-2 bg-white text-neutral-600 border border-neutral-200 text-sm font-medium rounded-lg transition-transform active:scale-[0.98]">Discard</button>}
+        <button type="button" onClick={submit} disabled={busy || !text.trim()} className="min-h-11 px-4 py-2 bg-lime-400 text-neutral-950 text-sm font-medium rounded-lg flex items-center gap-2 transition-transform active:scale-[0.98] disabled:opacity-50">
+          <Sparkles size={14} /> {loading ? "Processing…" : "Submit note"}
         </button>
       </div>
     </div>
   );
 }
 
-function MobileDock({ items, active, onChange }) {
+function MobileDock({ items, active, onChange, onVoice }) {
   const activeIndex = Math.max(0, items.findIndex((i) => i.key === active));
   const vbw = 342;
   const cx = (activeIndex + 0.5) * (vbw / items.length);
@@ -233,13 +405,14 @@ function MobileDock({ items, active, onChange }) {
   const ActiveIcon = items[activeIndex]?.icon;
 
   return (
-    <div className="md:hidden fixed left-0 right-0 bottom-5 flex justify-center px-5 z-20">
+    <div className="mobile-dock-shell md:hidden fixed left-0 right-0 bottom-5 flex flex-col items-center gap-3 px-5 z-20">
       <style>{`
         @keyframes dockPopScale { 0%{transform:scale(.7);} 55%{transform:scale(1.14);} 100%{transform:scale(1);} }
         .dock-pop-inner { animation: dockPopScale .48s cubic-bezier(.34,1.56,.64,1); }
         @media (prefers-reduced-motion: reduce) { .dock-pop-inner { animation: none; } }
       `}</style>
-      <div className="relative w-full max-w-[360px]" style={{ height: 64 }}>
+      {onVoice && <button type="button" className="mobile-voice-cta" onClick={onVoice} aria-label="Open voice log"><span><strong>Voice log</strong><small>Tap to speak</small></span><span className="mobile-voice-wave"><Mic size={20} /></span><Mic size={21} /></button>}
+      <div className="mobile-dock-bar relative w-full max-w-[360px]" style={{ height: 64 }}>
         <svg className="absolute inset-0 w-full h-full overflow-visible" viewBox={`0 0 ${vbw} 64`} preserveAspectRatio="none">
           <defs>
             <mask id="dockNotchMask" maskUnits="userSpaceOnUse">
@@ -405,19 +578,20 @@ export default function PersonalLifeOS() {
   const [financeSub, setFinanceSub] = useState("income");
   const [schoolSub, setSchoolSub] = useState("Georgetown");
   const today = new Date().toISOString().slice(0, 10);
-  const { user, loading: authLoading, isAuthenticated, login, logout, error: authError } = useAuth();
-  const [pinInput, setPinInput] = useState("");
-  const [pinError, setPinError] = useState("");
-  async function handlePinLogin(event) {
-    event.preventDefault();
-    setPinError("");
-    try {
-      await login(pinInput);
-      setPinInput("");
-    } catch (error) {
-      setPinError(error?.message || "That PIN was not accepted.");
-    }
-  }
+  const formattedToday = new Date(`${today}T00:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  const todayCategories = [
+    { key: "gym", label: "Gym", domain: "health", icon: Dumbbell, color: "emerald", defaultText: "Complete today's workout" },
+    { key: "food", label: "Food", domain: "health", icon: Droplet, color: "amber", defaultText: "Plan balanced meals and hydrate" },
+    { key: "classes", label: "Classes", domain: "school", icon: BookOpen, color: "violet", defaultText: "Stay on top of classwork" },
+    { key: "masters", label: "Masters", domain: "school", icon: GraduationCap, color: "blue", defaultText: "Move one application task forward" },
+    { key: "work", label: "Work", domain: "work", icon: Briefcase, color: "amber", defaultText: "Make progress on your priority project" },
+    { key: "money", label: "Money", domain: "finance", icon: Wallet, color: "blue", defaultText: "Review today's money priorities" },
+    { key: "relationships", label: "People", domain: "relationships", icon: Users, color: "rose", defaultText: "Reach out to someone important" },
+  ];
+  const [todayPlan, setTodayPlan] = useState({});
+  const [todayDraft, setTodayDraft] = useState({});
+  const [debtAction, setDebtAction] = useState(null);
+  const { user, loading: authLoading, isAuthenticated, loginWithPin, pinLoginLoading, pinLoginError, logout } = useAuth();
   const snapshotQuery = trpc.dashboard.load.useQuery(undefined, { enabled: isAuthenticated, retry: false });
   const saveSnapshot = trpc.dashboard.save.useMutation();
   const [snapshotReady, setSnapshotReady] = useState(false);
@@ -512,6 +686,7 @@ export default function PersonalLifeOS() {
   const upcomingTodos = [...todos]
     .filter((t) => t.due && t.due > today)
     .sort((a, b) => new Date(a.due) - new Date(b.due));
+  const unfinishedTodos = todos.filter((todo) => !todo.done);
 
   // Finance data
   const [income, setIncome] = useState([
@@ -557,15 +732,14 @@ export default function PersonalLifeOS() {
     if (!amount || amount < 0) return;
     setIncome((prev) => prev.map((r) => r.id === id ? { ...r, ...addIncomeExpected(r, amount) } : r));
   }
-  function payDebt(id) {
-    const amount = Number(window.prompt("How much would you like to pay? You can enter a partial amount.") || 0);
-    if (!amount || amount < 0) return;
-    setDebts((prev) => prev.map((d) => d.id === id ? { ...d, ...applyDebtPayment(d, amount) } : d));
-  }
-  function addDebtAmount(id) {
-    const amount = Number(window.prompt("How much should be added to this debt?") || 0);
-    if (!amount || amount < 0) return;
-    setDebts((prev) => prev.map((d) => d.id === id ? { ...d, ...addDebtPrincipal(d, amount) } : d));
+  function submitDebtAction() {
+    const amount = Number(debtAction?.amount || 0);
+    if (!debtAction?.id || !Number.isFinite(amount) || amount <= 0) return;
+    setDebts((prev) => prev.map((d) => {
+      if (d.id !== debtAction.id) return d;
+      return { ...d, ...(debtAction.type === "pay" ? applyDebtPayment(d, amount) : addDebtPrincipal(d, amount)) };
+    }));
+    setDebtAction(null);
   }
   const debtRows = debts.map((d) => ({ ...d, balance: d.debt - d.paid }));
   const filteredDebts = debtRows.filter((d) => debtView === "Table" ? true : d.status === debtView);
@@ -593,10 +767,82 @@ export default function PersonalLifeOS() {
     { id: 2, date: "Aug 24", type: "Legs", duration: "61 min" },
     { id: 3, date: "Aug 22", type: "Cardio", duration: "30 min" },
   ]);
+  const defaultFitnessPlan = [
+    { key: "push", label: "Push", focus: "Chest · Shoulders · Triceps", exercises: [{ name: "Bench press", sets: 4, reps: "6–10", rest: "2–3 min" }, { name: "Incline dumbbell press", sets: 3, reps: "8–12", rest: "90 sec" }, { name: "Overhead shoulder press", sets: 3, reps: "8–10", rest: "90 sec" }, { name: "Lateral raises", sets: 3, reps: "12–15", rest: "60 sec" }, { name: "Triceps rope pushdown", sets: 3, reps: "10–15", rest: "60 sec" }, { name: "Overhead triceps extension", sets: 2, reps: "10–12", rest: "60 sec" }] },
+    { key: "pull", label: "Pull", focus: "Back · Biceps", exercises: [{ name: "Deadlift", sets: 4, reps: "5–8", rest: "2–3 min" }, { name: "Pull-ups / lat pulldown", sets: 4, reps: "6–10", rest: "90 sec" }, { name: "Barbell row", sets: 3, reps: "8–12", rest: "90 sec" }, { name: "Face pulls", sets: 3, reps: "12–15", rest: "60 sec" }, { name: "Barbell curl", sets: 3, reps: "10–12", rest: "60 sec" }, { name: "Hammer curl", sets: 2, reps: "10–12", rest: "60 sec" }] },
+    { key: "legs", label: "Legs & core", focus: "Quads · Hamstrings · Glutes · Calves · Abs", exercises: [{ name: "Back squat", sets: 4, reps: "6–10", rest: "2–3 min" }, { name: "Romanian deadlift", sets: 3, reps: "8–12", rest: "90 sec" }, { name: "Walking lunges", sets: 3, reps: "10–12 / leg", rest: "90 sec" }, { name: "Leg press", sets: 3, reps: "10–12", rest: "90 sec" }, { name: "Calf raise", sets: 4, reps: "12–15", rest: "60 sec" }, { name: "Hanging leg raise", sets: 3, reps: "12–15", rest: "60 sec" }, { name: "Plank", sets: 3, reps: "30–60 sec", rest: "45 sec" }] },
+    { key: "rest", label: "Rest & recover", focus: "Walking · Mobility · Light activity", exercises: [] },
+  ];
+  const [fitnessPlan, setFitnessPlan] = useState(defaultFitnessPlan);
+  const [fitnessDayIndex, setFitnessDayIndex] = useState(0);
+  const currentFitnessDay = fitnessPlan[fitnessDayIndex % fitnessPlan.length] || defaultFitnessPlan[0];
+  const exerciseMuscles = { "Bench press": ["Chest", "Triceps"], "Incline dumbbell press": ["Upper chest", "Shoulders"], "Overhead shoulder press": ["Shoulders", "Triceps"], "Lateral raises": ["Side delts"], "Triceps rope pushdown": ["Triceps"], "Overhead triceps extension": ["Triceps"], "Pull-ups": ["Back", "Biceps"], "Barbell row": ["Back", "Biceps"], "Face pulls": ["Rear delts"], "Barbell curl": ["Biceps"], "Back squat": ["Quads", "Glutes"], "Romanian deadlift": ["Hamstrings", "Glutes"], "Leg press": ["Quads"], "Calf raises": ["Calves"], "Plank": ["Core"] };
+  function exerciseRange(value) { const numbers = String(value || "8–12").match(/\d+/g)?.map(Number) || [8, 12]; return { min: numbers[0], max: numbers[1] || numbers[0] }; }
+  function coachRecommendation(exercise) {
+    const history = liftLog.filter((entry) => entry.exercise === exercise.name).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    const previous = history[0];
+    const range = exerciseRange(exercise.reps);
+    const baseLoad = previous?.load || 20;
+    const progressed = previous && Number(previous.reps) >= range.max ? baseLoad + 2.5 : baseLoad;
+    const adjusted = previous && Number(previous.reps) < range.min ? Math.max(2.5, baseLoad - 2.5) : progressed;
+    return { load: adjusted, reps: previous?.reps && Number(previous.reps) >= range.min ? Math.min(range.max, Number(previous.reps)) : range.min, rationale: previous ? (Number(previous.reps) >= range.max ? "You reached the top of your rep range last time, so the coach suggests a small load increase." : Number(previous.reps) < range.min ? "Your last set fell below the target range, so the coach is holding or slightly reducing load." : "The coach is holding your last successful load while you build repeatable reps.") : "No previous entry yet; start conservatively and adjust if your form changes." };
+  }
+  const coachMuscleCoverage = [...new Set(currentFitnessDay.exercises.flatMap((exercise) => exerciseMuscles[exercise.name] || []))];
+
+  const [coachSession, setCoachSession] = useState({ active: false, exerciseIndex: 0, setIndex: 1, reps: "", load: "" });
+  const [coachSeconds, setCoachSeconds] = useState(0);
+  const [coachRestSeconds, setCoachRestSeconds] = useState(0);
+  useEffect(() => {
+    if (!coachSession.active) return undefined;
+    const timer = window.setInterval(() => { setCoachSeconds((seconds) => seconds + 1); setCoachRestSeconds((seconds) => Math.max(0, seconds - 1)); }, 1000);
+    return () => window.clearInterval(timer);
+  }, [coachSession.active]);
+  const coachExercise = currentFitnessDay.exercises[coachSession.exerciseIndex];
+  const coachCompleted = currentFitnessDay.exercises.length ? Math.round((coachSession.exerciseIndex / currentFitnessDay.exercises.length) * 100) : 100;
+  function startCoach() { if (!currentFitnessDay.exercises.length) return; const first = coachRecommendation(currentFitnessDay.exercises[0]); setCoachSession({ active: true, exerciseIndex: 0, setIndex: 1, reps: String(first.reps), load: String(first.load) }); setCoachSeconds(0); setCoachRestSeconds(0); }
+  function finishCoachSet() {
+    if (!coachExercise || !coachSession.reps || !coachSession.load) return;
+    setLiftLog((prev) => [{ id: Date.now(), date: today, exercise: coachExercise.name, load: Number(coachSession.load), unit: "kg", reps: Number(coachSession.reps), sets: 1, note: `Live coach · set ${coachSession.setIndex}` }, ...prev]);
+    const nextSet = coachSession.setIndex + 1;
+    setCoachRestSeconds(Number(String(coachExercise.rest).match(/\d+/)?.[0] || 90));
+    if (nextSet <= coachExercise.sets) { const nextRecommendation = coachRecommendation(coachExercise); setCoachSession((prev) => ({ ...prev, setIndex: nextSet, reps: String(nextRecommendation.reps), load: String(nextRecommendation.load) })); }
+    else if (coachSession.exerciseIndex + 1 < currentFitnessDay.exercises.length) { const nextExercise = currentFitnessDay.exercises[coachSession.exerciseIndex + 1]; const nextRecommendation = coachRecommendation(nextExercise); setCoachSession((prev) => ({ ...prev, exerciseIndex: prev.exerciseIndex + 1, setIndex: 1, reps: String(nextRecommendation.reps), load: String(nextRecommendation.load) })); }
+    else setCoachSession((prev) => ({ ...prev, active: false }));
+  }
+  function stopCoach() { setCoachSession((prev) => ({ ...prev, active: false })); }
+  const [liftLog, setLiftLog] = useState([{ id: 1, date: "Aug 26", exercise: "Bench press", load: 45, unit: "kg", reps: 8, sets: 4, note: "Controlled reps" }, { id: 2, date: "Aug 24", exercise: "Back squat", load: 60, unit: "kg", reps: 8, sets: 4, note: "Felt steady" }]);
+  const favoriteExercises = Object.entries(liftLog.reduce((counts, entry) => ({ ...counts, [entry.exercise]: (counts[entry.exercise] || 0) + 1 }), {})).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name]) => name);
+  const currentCoachRecommendation = coachExercise ? coachRecommendation(coachExercise) : null;
+  const muscleFrequency = liftLog.reduce((counts, entry) => { (exerciseMuscles[entry.exercise] || []).forEach((muscle) => { counts[muscle] = (counts[muscle] || 0) + 1; }); return counts; }, {});
+  const priorityMuscle = coachMuscleCoverage.slice().sort((a, b) => (muscleFrequency[a] || 0) - (muscleFrequency[b] || 0))[0];
+  const [newLift, setNewLift] = useState({ exercise: "", load: "", reps: "", sets: "" });
+  const [newPlanExercise, setNewPlanExercise] = useState({ name: "", sets: "3", reps: "8–12", rest: "90 sec" });
+  function addCustomMeal() {
+    if (!customMeal.meal.trim()) return;
+    setNutritionPlan((prev) => [...prev, { slot: customMeal.slot, meal: customMeal.meal.trim(), cue: "Custom meal", kcal: Number(customMeal.kcal) || 0, protein: Number(customMeal.protein) || 0 }]);
+    setCustomMeal({ slot: "Snack", meal: "", kcal: "", protein: "" });
+  }
+  function addPlanExercise() {
+    if (!newPlanExercise.name || currentFitnessDay.key === "rest") return;
+    setFitnessPlan((prev) => prev.map((day) => day.key !== currentFitnessDay.key ? day : { ...day, exercises: [...day.exercises, { ...newPlanExercise, sets: Number(newPlanExercise.sets || 3) }] }));
+    setNewPlanExercise({ name: "", sets: "3", reps: "8–12", rest: "90 sec" });
+  }
+  function addLift() {
+    if (!newLift.exercise || !newLift.load || !newLift.reps) return;
+    setLiftLog((prev) => [{ id: Date.now(), date: today, exercise: newLift.exercise, load: Number(newLift.load), unit: "kg", reps: Number(newLift.reps), sets: Number(newLift.sets || 1), note: "" }, ...prev]);
+    setNewLift({ exercise: "", load: "", reps: "", sets: "" });
+  }
+  const defaultNutritionPlan = [{ slot: "Breakfast", meal: "Eggs, oats, fruit, and milk", cue: "Add a protein source", kcal: 650, protein: 35 }, { slot: "Lunch", meal: "Rice or potatoes, beans or lean meat, vegetables", cue: "Build a full plate", kcal: 850, protein: 45 }, { slot: "Pre-workout", meal: "Banana with yogurt or peanut butter", cue: "Keep it easy to digest", kcal: 350, protein: 18 }, { slot: "Dinner", meal: "Carbs, protein, vegetables, and healthy fats", cue: "Eat enough to recover", kcal: 800, protein: 40 }, { slot: "Before sleep", meal: "Milk or yogurt with nuts", cue: "Optional if hungry", kcal: 300, protein: 15 }];
+  const [nutritionPlan, setNutritionPlan] = useState(defaultNutritionPlan);
+  const [customMeal, setCustomMeal] = useState({ slot: "Snack", meal: "", kcal: "", protein: "" });
+  const nutritionTotals = nutritionPlan.reduce((totals, meal) => ({ kcal: totals.kcal + Number(meal.kcal || 0), protein: totals.protein + Number(meal.protein || 0) }), { kcal: 0, protein: 0 });
+  const goalDelta = Math.max(0, Number(targetWeight) - Number(currentWeight));
+  const weeklyGainTarget = goalDelta > 0 ? Math.min(0.35, Math.max(0.15, goalDelta / 20)) : 0;
+  const calorieSurplusTarget = goalDelta > 0 ? 300 : 0;
   const [newWorkout, setNewWorkout] = useState({ type: "", duration: "" });
   function addWorkout() {
     if (!newWorkout.type) return;
-    setWorkouts([{ id: Date.now(), date: "Aug 28", type: newWorkout.type, duration: newWorkout.duration || "—" }, ...workouts]);
+    setWorkouts([{ id: Date.now(), date: today, type: newWorkout.type, duration: newWorkout.duration || "—" }, ...workouts]);
     setNewWorkout({ type: "", duration: "" });
   }
 
@@ -604,24 +850,26 @@ export default function PersonalLifeOS() {
   function addWeight() {
     if (!newWeight) return;
     setWeight((prev) => {
-      const rest = prev.filter((w) => w.date !== "Aug 28");
-      return [...rest, { date: "Aug 28", weight: Number(newWeight) }];
+      const rest = prev.filter((w) => w.date !== today);
+      return [...rest, { date: today, weight: Number(newWeight) }];
     });
     setNewWeight("");
   }
 
   const [sleep, setSleep] = useState([
-    { date: "Aug 22", hours: 6.5 }, { date: "Aug 23", hours: 7 }, { date: "Aug 24", hours: 5.5 },
-    { date: "Aug 25", hours: 7.5 }, { date: "Aug 26", hours: 6 }, { date: "Aug 27", hours: 8 },
+    { date: "Aug 22", hours: 6.5, quality: "Fair" }, { date: "Aug 23", hours: 7, quality: "Good" }, { date: "Aug 24", hours: 5.5, quality: "Low" },
+    { date: "Aug 25", hours: 7.5, quality: "Good" }, { date: "Aug 26", hours: 6, quality: "Fair" }, { date: "Aug 27", hours: 8, quality: "Good" },
   ]);
   const [newSleep, setNewSleep] = useState("");
+  const [newSleepMeta, setNewSleepMeta] = useState({ bedtime: "", wake: "", quality: "Good" });
   function addSleep() {
     if (!newSleep) return;
     setSleep((prev) => {
-      const rest = prev.filter((s) => s.date !== "Aug 28");
-      return [...rest, { date: "Aug 28", hours: Number(newSleep) }];
+      const rest = prev.filter((s) => s.date !== today);
+      return [...rest, { date: today, hours: Number(newSleep), quality: newSleepMeta.quality, bedtime: newSleepMeta.bedtime, wake: newSleepMeta.wake }];
     });
     setNewSleep("");
+    setNewSleepMeta({ bedtime: "", wake: "", quality: "Good" });
   }
   const avgSleep = sleep.length ? (sleep.reduce((s, x) => s + x.hours, 0) / sleep.length).toFixed(1) : 0;
 
@@ -635,22 +883,32 @@ export default function PersonalLifeOS() {
   const nextAppointment = conditionLog[0]?.nextAppointment;
   const [newCondition, setNewCondition] = useState({ note: "", medTaken: true });
   function addCondition() {
-    setConditionLog([{ id: Date.now(), date: "Aug 28", note: newCondition.note || "No note", medTaken: newCondition.medTaken, nextAppointment }, ...conditionLog]);
+    setConditionLog([{ id: Date.now(), date: today, note: newCondition.note || "No note", medTaken: newCondition.medTaken, nextAppointment }, ...conditionLog]);
     setNewCondition({ note: "", medTaken: true });
   }
 
-  const [diseases, setDiseases] = useState([
-    { id: 1, name: "Seasonal allergies", status: "Active", since: "2026-08-01" },
-  ]);
+  const [diseases, setDiseases] = useState([{ id: 1, name: "Seasonal allergies", status: "Active", since: "2026-08-01" }]);
+  const [diseaseArchive, setDiseaseArchive] = useState([]);
+  const [healthSchedules, setHealthSchedules] = useState([{ id: 1, title: "Sleep log", time: "22:00", cadence: "Daily", enabled: true }, { id: 2, title: "Wake-up check-in", time: "07:00", cadence: "Daily", enabled: true }, { id: 3, title: "Weight check", time: "07:10", cadence: "Daily", enabled: false }]);
+  const [newHealthSchedule, setNewHealthSchedule] = useState({ title: "", time: "", cadence: "Daily" });
+  const [customHealthActivity, setCustomHealthActivity] = useState("");
+  function addHealthSchedule(title = newHealthSchedule.title, time = newHealthSchedule.time, cadence = newHealthSchedule.cadence) {
+    if (!title || !time) return;
+    const id = Date.now();
+    setHealthSchedules((prev) => [...prev, { id, title, time, cadence, enabled: true }]);
+    setTodos((prev) => [...prev, { id: `health-schedule-${id}`, text: `Check in: ${title}`, due: today, time, domain: "health", done: false, scheduleId: id }]);
+    setNewHealthSchedule({ title: "", time: "", cadence: "Daily" });
+    setCustomHealthActivity("");
+  }
+  function toggleHealthSchedule(id) { setHealthSchedules((prev) => prev.map((item) => item.id === id ? { ...item, enabled: !item.enabled } : item)); }
+  function archiveDisease(id) { const resolved = diseases.find((disease) => disease.id === id); if (!resolved) return; setDiseases((prev) => prev.filter((disease) => disease.id !== id)); setDiseaseArchive((prev) => [{ ...resolved, status: "Resolved", resolvedOn: today }, ...prev]); }
   const [newDisease, setNewDisease] = useState("");
   function addDisease() {
     if (!newDisease) return;
     setDiseases([...diseases, { id: Date.now(), name: newDisease, status: "Active", since: today }]);
     setNewDisease("");
   }
-  function toggleDiseaseStatus(id) {
-    setDiseases((prev) => prev.map((d) => d.id !== id ? d : { ...d, status: d.status === "Active" ? "Resolved" : "Active" }));
-  }
+  function toggleDiseaseStatus(id) { archiveDisease(id); }
   function deleteDisease(id) {
     setDiseases((prev) => prev.filter((d) => d.id !== id));
   }
@@ -788,6 +1046,10 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
     setAssignments([...assignments, { id: Date.now(), title: newAssignment.title, course: newAssignment.course || "General", due: newAssignment.due || "2026-09-01", status: "Not Started", grade: null, program: schoolSub }]);
     setNewAssignment({ title: "", course: "", due: "" });
   }
+  function cycleAssignmentStatus(id) {
+    const order = ["Not Started", "In Progress", "Submitted", "Graded"];
+    setAssignments((prev) => prev.map((item) => String(item.id) !== String(id) ? item : { ...item, status: order[(order.indexOf(item.status) + 1) % order.length] }));
+  }
   const [newReading, setNewReading] = useState({ title: "", course: "" });
   function addReading() {
     if (!newReading.title) return;
@@ -833,7 +1095,7 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
   }
   function cycleApplicationStatus(id) {
     const order = ["Not Started", "In Progress", "Submitted", "Received"];
-    setApplications((prev) => prev.map((a) => a.id !== id ? a : { ...a, status: order[(order.indexOf(a.status) + 1) % order.length] }));
+    setApplications((prev) => prev.map((a) => String(a.id) !== String(id) ? a : { ...a, status: order[(order.indexOf(a.status) + 1) % order.length] }));
   }
   function deleteApplication(id) {
     setApplications((prev) => prev.filter((a) => a.id !== id));
@@ -854,6 +1116,57 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
     setRecommenders((prev) => prev.filter((r) => r.id !== id));
   }
   const mastersTodos = todos.filter((t) => t.domain === "school");
+
+  const todayLinkedTodos = (domain, extraFilter = () => true) => todayTodos.filter((todo) => todo.domain === domain && extraFilter(todo)).map((todo) => ({ ...todo, source: "todo" }));
+  const todayCardItems = useMemo(() => {
+    const sources = {
+      gym: [
+        ...todayLinkedTodos("health", (todo) => /gym|workout|exercise|run|lift/i.test(todo.text)),
+        ...workouts.filter((workout) => workout.date === today || workout.date === "Aug 28").map((workout) => ({ id: `workout-${workout.id}`, text: `${workout.type}${workout.duration ? ` · ${workout.duration}` : ""}`, done: true, source: "workout" })),
+        ...healthSchedules.filter((schedule) => schedule.enabled).map((schedule) => ({ id: `schedule-${schedule.id}`, text: `${schedule.title} · ${schedule.time}`, done: Boolean(todayTodos.some((todo) => todo.scheduleId === schedule.id && todo.done)), source: "schedule" })),
+        ...currentFitnessDay.exercises.map((exercise) => ({ id: `plan-${currentFitnessDay.key}-${exercise.name}`, text: `${exercise.name} · ${exercise.sets} sets · ${exercise.reps}`, done: false, source: "plan" })),
+      ],
+      food: [
+        ...todayLinkedTodos("health", (todo) => /food|meal|eat|water|hydrate|nutrition/i.test(todo.text)),
+        ...nutritionPlan.map((meal) => ({ id: `meal-${meal.slot}`, text: `${meal.slot}: ${meal.meal}`, done: false, source: "plan" })),
+      ],
+      classes: [...todayLinkedTodos("school", (todo) => !/application|masters|recommend/i.test(todo.text)), ...assignments.filter((item) => item.due === today && item.status !== "Graded").map((item) => ({ id: `assignment-${item.id}`, text: `${item.title}${item.course ? ` · ${item.course}` : ""}`, done: item.status === "Submitted" || item.status === "Graded", source: "assignment" }))],
+      masters: [...todayLinkedTodos("school", (todo) => /application|masters|recommend/i.test(todo.text)), ...applications.filter((item) => item.deadline === today && item.status !== "Received").map((item) => ({ id: `application-${item.id}`, text: `Application · ${item.school}`, done: item.status === "Submitted" || item.status === "Received", source: "application" }))],
+      work: todayLinkedTodos("work"),
+      money: todayLinkedTodos("finance"),
+      relationships: todayLinkedTodos("relationships"),
+    };
+    return todayCategories.reduce((result, category) => {
+      const custom = todayPlan[category.key] || [];
+      const items = [...sources[category.key], ...custom].filter((item, index, list) => list.findIndex((candidate) => String(candidate.id) === String(item.id)) === index);
+      result[category.key] = items.length ? items : [{ id: `${category.key}-default`, text: category.defaultText, done: false, source: "plan" }];
+      return result;
+    }, {});
+  }, [todayPlan, todayTodos, workouts, assignments, applications, currentFitnessDay, nutritionPlan, healthSchedules]);
+  function toggleTodayItem(categoryKey, item) {
+    if (item.source === "todo") return toggleTodo(item.id);
+    if (item.source === "assignment") return cycleAssignmentStatus(String(item.id).replace("assignment-", ""));
+    if (item.source === "application") return cycleApplicationStatus(String(item.id).replace("application-", ""));
+    if (item.source === "schedule") { const scheduledTodo = todayTodos.find((todo) => todo.scheduleId === Number(String(item.id).replace("schedule-", ""))); if (scheduledTodo) return toggleTodo(scheduledTodo.id); }
+    if (item.source === "workout") return;
+    setTodayPlan((prev) => {
+      const existing = prev[categoryKey] || [];
+      const next = existing.some((entry) => entry.id === item.id)
+        ? existing.map((entry) => entry.id === item.id ? { ...entry, done: !entry.done } : entry)
+        : [...existing, { ...item, source: "plan", done: !item.done }];
+      return { ...prev, [categoryKey]: next };
+    });
+  }
+  function addTodayPlanItem(categoryKey) {
+    const text = (todayDraft[categoryKey] || "").trim();
+    if (!text) return;
+    setTodayPlan((prev) => ({ ...prev, [categoryKey]: [...(prev[categoryKey] || []), { id: `plan-${Date.now()}`, text, done: false, source: "plan" }] }));
+    setTodayDraft((prev) => ({ ...prev, [categoryKey]: "" }));
+  }
+  const todayOverall = Math.round(todayCategories.reduce((sum, category) => {
+    const items = todayCardItems[category.key] || [];
+    return sum + (items.length ? items.filter((item) => item.done).length / items.length * 100 : 0);
+  }, 0) / todayCategories.length);
 
   // Relationships
   const [relationshipsSub, setRelationshipsSub] = useState("Family");
@@ -949,9 +1262,11 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
   // ---------- generic AI voice-note update pipeline ----------
   const [voiceLog, setVoiceLog] = useState([]);
   const [voiceLoading, setVoiceLoading] = useState(false);
+  const [showGlobalVoiceLog, setShowGlobalVoiceLog] = useState(false);
+  const [voiceConfirmation, setVoiceConfirmation] = useState(null);
 
   function applyAIActions(actions) {
-    let next = { todos, projects, debts, income, workouts, weight, sleep, conditionLog };
+    let next = { todos, projects, debts, income, workouts, liftLog, weight, sleep, conditionLog, diseases, diseaseArchive, healthSchedules };
     (actions || []).forEach((action, index) => {
       next = applyVoiceActionToState(next, action, today, `voice-${Date.now()}-${index}`);
     });
@@ -960,24 +1275,54 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
     setDebts(next.debts);
     setIncome(next.income);
     setWorkouts(next.workouts);
+    setLiftLog(next.liftLog || liftLog);
     setWeight(next.weight);
     setSleep(next.sleep);
     setConditionLog(next.conditionLog);
+    setDiseases(next.diseases || diseases);
+    setDiseaseArchive(next.diseaseArchive || diseaseArchive);
+    setHealthSchedules(next.healthSchedules || healthSchedules);
   }
 
 
-  async function processVoiceNote(transcript) {
+  function navigateToVoiceTarget(targetTab, targetSubpage) {
+    if (!targetTab) return;
+    setTab(targetTab);
+    if (targetTab === "home" && targetSubpage) setHomeSub(targetSubpage);
+    if (targetTab === "health" && targetSubpage) setHealthSub(targetSubpage);
+    if (targetTab === "finance" && targetSubpage) setFinanceSub(targetSubpage);
+    if (targetTab === "school" && targetSubpage) setSchoolSub(targetSubpage);
+    if (targetTab === "relationships" && targetSubpage) setRelationshipsSub(targetSubpage);
+    if (targetTab === "work" && targetSubpage) {
+      const project = projects.find((item) => item.name.toLowerCase() === targetSubpage.toLowerCase());
+      if (project) setActiveProject(project.id);
+    }
+  }
+
+  async function processVoiceNote(transcript, attachment = null) {
     const trimmed = transcript.trim();
     if (!trimmed || voiceUpdateMutation.isPending) return false;
     setVoiceLoading(true);
-    const context = JSON.stringify({ projects: projects.map((p) => ({ id: p.id, name: p.name, tasks: p.tasks.map((t) => ({ id: t.id, name: t.name, status: t.status })) })), todos: todos.filter((t) => !t.done).map((t) => ({ id: t.id, text: t.text, due: t.due, domain: t.domain })), debts: debts.map((d) => ({ id: d.id, name: d.name, balance: d.debt - d.paid })), income: income.map((r) => ({ id: r.id, source: r.source, remaining: r.toReceive - r.paid })) });
+    const context = JSON.stringify({
+      page: { tab, subpage: tab === "home" ? homeSub : tab === "health" ? healthSub : tab === "finance" ? financeSub : tab === "school" ? schoolSub : tab === "relationships" ? relationshipsSub : tab === "work" ? currentProject?.name : null, date: today },
+      instructions: "Use the current page and subpage as the primary context. Decide whether this note should create or complete a task, update a tracker, add a finance transaction, update a workout/health log, or add a note. Only return actions supported by the existing dashboard data.",
+      projects: projects.map((p) => ({ id: p.id, name: p.name, tasks: p.tasks.map((t) => ({ id: t.id, name: t.name, status: t.status })) })),
+      todos: todos.filter((t) => !t.done).map((t) => ({ id: t.id, text: t.text, due: t.due, domain: t.domain })),
+      debts: debts.map((d) => ({ id: d.id, name: d.name, balance: d.debt - d.paid })),
+      income: income.map((r) => ({ id: r.id, source: r.source, remaining: r.toReceive - r.paid })),
+      fitnessPlan, currentFitnessDay, workouts, liftLog, weight, sleep, diseases, diseaseArchive, conditionLog, healthSchedules, nutritionPlan,
+    });
     try {
       const result = await voiceUpdateMutation.mutateAsync({ transcript: trimmed, context });
+      if (result.needsConfirmation && result.actions?.length) {
+        setVoiceConfirmation({ summary: result.summary, actions: result.actions, targetTab: result.targetTab, targetSubpage: result.targetSubpage, reason: result.confirmationReason, transcript: trimmed, attachment });
+        return true;
+      }
       applyAIActions(result.actions);
-      setVoiceLog((prev) => [{ id: Date.now(), text: result.summary || "Updated.", count: (result.actions || []).length, time: "Just now" }, ...prev]);
+      setVoiceLog((prev) => [{ id: Date.now(), text: result.summary || "Updated.", count: (result.actions || []).length, time: "Just now", audioUrl: attachment?.url || null, audioKey: attachment?.key || null }, ...prev]);
       return true;
     } catch {
-      setVoiceLog((prev) => [{ id: Date.now(), text: "Couldn't process that note — try again.", count: 0, time: "Just now", failed: true }, ...prev]);
+      setVoiceLog((prev) => [{ id: Date.now(), text: "Couldn't process that note — try again.", count: 0, time: "Just now", failed: true, audioUrl: attachment?.url || null, audioKey: attachment?.key || null }, ...prev]);
       return false;
     } finally {
       setVoiceLoading(false);
@@ -990,11 +1335,12 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
   useEffect(() => {
     if (rewindStatusQuery.data?.pending) setShowRewind(true);
   }, [rewindStatusQuery.data?.pending]);
-  async function submitRewind(transcript) {
-    const processed = await processVoiceNote(transcript);
-    if (!processed) return;
+  async function submitRewind(transcript, attachment) {
+    const processed = await processVoiceNote(transcript, attachment);
+    if (!processed) return false;
     rewindCompleteMutation.mutate();
     setShowRewind(false);
+    return true;
   }
 
   // Home scores
@@ -1058,9 +1404,15 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
       if (saved.debts) setDebts(saved.debts);
       if (saved.weight) setWeight(saved.weight);
       if (saved.workouts) setWorkouts(saved.workouts);
+      if (saved.fitnessPlan) setFitnessPlan(saved.fitnessPlan);
+      if (saved.nutritionPlan) setNutritionPlan(saved.nutritionPlan);
+      if (Number.isFinite(saved.fitnessDayIndex)) setFitnessDayIndex(saved.fitnessDayIndex);
+      if (saved.liftLog) setLiftLog(saved.liftLog);
       if (saved.sleep) setSleep(saved.sleep);
       if (saved.conditionLog) setConditionLog(saved.conditionLog);
       if (saved.diseases) setDiseases(saved.diseases);
+      if (saved.diseaseArchive) setDiseaseArchive(saved.diseaseArchive);
+      if (saved.healthSchedules) setHealthSchedules(saved.healthSchedules);
       setProjects(loadedProjects);
       if (saved.assignments) setAssignments(saved.assignments);
       if (saved.readings) setReadings(saved.readings);
@@ -1070,44 +1422,57 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
       if (saved.recommenders) setRecommenders(saved.recommenders);
       if (saved.people) setPeople(saved.people);
       if (saved.voiceLog) setVoiceLog(saved.voiceLog);
+      if (saved.todayPlan) setTodayPlan(saved.todayPlan);
     }
     setSnapshotReady(true);
   }, [isAuthenticated, snapshotQuery.isLoading, snapshotQuery.data, snapshotReady]);
 
   useEffect(() => {
     if (!isAuthenticated || !snapshotReady) return;
-    const payload = { todos, income, debts, weight, workouts, sleep, conditionLog, diseases, projects, assignments, readings, classes, syllabusEvents, applications, recommenders, people, voiceLog };
+    const payload = { todos, income, debts, weight, workouts, fitnessPlan, fitnessDayIndex, liftLog, nutritionPlan, sleep, conditionLog, diseases, diseaseArchive, healthSchedules, projects, assignments, readings, classes, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan };
     const timer = window.setTimeout(() => saveSnapshot.mutate(payload), 500);
     return () => window.clearTimeout(timer);
-  }, [isAuthenticated, snapshotReady, todos, income, debts, weight, workouts, sleep, conditionLog, diseases, projects, assignments, readings, classes, syllabusEvents, applications, recommenders, people, voiceLog]);
+  }, [isAuthenticated, snapshotReady, todos, income, debts, weight, workouts, fitnessPlan, fitnessDayIndex, liftLog, nutritionPlan, sleep, conditionLog, diseases, diseaseArchive, healthSchedules, projects, assignments, readings, classes, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan]);
 
   if (authLoading || (isAuthenticated && snapshotQuery.isLoading)) {
     return <div className="min-h-screen bg-neutral-100 flex items-center justify-center text-sm text-neutral-500">Loading your workspace…</div>;
   }
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-neutral-100 flex items-center justify-center p-6 font-sans">
-        <div className="w-full max-w-sm rounded-2xl bg-white border border-neutral-200 shadow-sm p-7">
-          <div className="h-12 w-12 rounded-2xl bg-lime-400 flex items-center justify-center text-neutral-950 font-semibold mb-5">PL</div>
-          <p className="text-xs uppercase tracking-[0.16em] text-neutral-400">Personal Life OS</p>
-          <h1 className="text-2xl font-semibold text-neutral-950 mt-2">Welcome back</h1>
-          <p className="text-sm text-neutral-500 mt-2">Enter your private PIN to open your workspace.</p>
-          <form onSubmit={handlePinLogin} className="mt-6 space-y-4">
-            <label htmlFor="pin-login" className="block text-sm font-medium text-neutral-700">PIN</label>
-            <input id="pin-login" name="pin" type="password" inputMode="numeric" autoComplete="current-password" pattern="[0-9]{4,8}" maxLength={8} value={pinInput} onChange={(event) => setPinInput(event.target.value.replace(/\D/g, ""))} className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-center text-xl tracking-[0.4em] text-neutral-950 outline-none transition focus:border-lime-400 focus:ring-4 focus:ring-lime-100" placeholder="••••" aria-describedby="pin-login-error" required />
-            {(pinError || authError) && <p id="pin-login-error" className="text-sm text-rose-600" role="alert">{pinError || authError?.message || "Unable to sign in."}</p>}
-            <button type="submit" disabled={authLoading || pinInput.length < 4} className="w-full rounded-xl bg-neutral-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50">{authLoading ? "Opening workspace…" : "Unlock workspace"}</button>
-          </form>
-        </div>
-      </div>
-    );
-  }
+  if (!isAuthenticated) return <PinGate loading={pinLoginLoading} error={pinLoginError} onSubmit={loginWithPin} />;
   if (snapshotQuery.error) {
     return <div className="min-h-screen bg-neutral-100 flex items-center justify-center p-6 text-sm text-rose-600">We couldn’t load your workspace right now. Please refresh and try again.</div>;
   }
 
   return (
-    <div className="flex min-h-screen bg-neutral-100 font-sans">
+    <div className="dashboard-shell flex min-h-screen font-sans">
+      {showGlobalVoiceLog && (
+        <div className="fixed inset-0 z-40 pointer-events-none" role="presentation">
+          <div className="pointer-events-auto absolute right-4 top-20 w-[min(28rem,calc(100vw-2rem))] rounded-[1.35rem] bg-white/95 p-5 shadow-[0_20px_60px_rgba(53,64,37,0.18)] ring-1 ring-neutral-950/10 backdrop-blur-xl" role="dialog" aria-modal="false" aria-labelledby="global-voice-log-title">
+            <div className="flex items-start justify-between gap-4 mb-2">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-lime-700">Voice log</p>
+                <h2 id="global-voice-log-title" className="text-xl font-semibold tracking-tight text-neutral-950">Tell your dashboard what changed.</h2>
+                <p className="text-sm text-neutral-500 mt-1">I’ll analyse this note in the context of {tab === "home" ? homeSub : domainMeta[tab]?.label || tab}{tab === "home" ? "" : ` · ${tab === "health" ? healthSub : tab === "finance" ? financeSub : tab === "school" ? schoolSub : tab === "relationships" ? relationshipsSub : tab === "work" ? currentProject?.name || "Projects" : "Today"}`}, then update the relevant records.</p>
+              </div>
+              <button type="button" aria-label="Close voice log" onClick={() => setShowGlobalVoiceLog(false)} className="dashboard-action w-9 h-9 rounded-full bg-neutral-100 text-neutral-500 flex items-center justify-center"><X size={16} /></button>
+            </div>
+            <div className="mt-5 rounded-[1.2rem] border border-neutral-100 bg-neutral-50/70 p-4">
+              <VoiceNoteBox onSubmit={async (value, attachment) => { const processed = await processVoiceNote(value, attachment); if (processed) setShowGlobalVoiceLog(false); return processed; }} loading={voiceLoading} placeholder="Say what happened, what needs doing, or what should be updated…" />
+            </div>
+            <p className="mt-3 text-xs text-neutral-400">Examples: “Mark my gym session complete”, “Add a task to submit my Masters transcript”, or “I paid Nicole RWF 50,000.”</p>
+          </div>
+        </div>
+      )}
+      {voiceConfirmation && (
+        <div className="fixed right-4 top-20 z-50 w-[min(28rem,calc(100vw-2rem))] rounded-[1.35rem] bg-neutral-950 p-5 text-white shadow-[0_20px_60px_rgba(21,23,19,0.24)]" role="alertdialog" aria-modal="false" aria-labelledby="voice-confirm-title">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-lime-300">Check the destination</p>
+          <h2 id="voice-confirm-title" className="mt-1 text-base font-semibold">This sounds like a {voiceConfirmation.targetSubpage || voiceConfirmation.targetTab || "different area"} update.</h2>
+          <p className="mt-2 text-sm leading-5 text-white/70">{voiceConfirmation.reason || "The note appears to belong to a different page than the one you were viewing."} Apply it there instead?</p>
+          <div className="mt-4 flex justify-end gap-2">
+            <button type="button" onClick={() => setVoiceConfirmation(null)} className="dashboard-action rounded-full px-3 py-2 text-xs font-medium text-white/70 hover:bg-white/10">Keep here</button>
+            <button type="button" onClick={() => { navigateToVoiceTarget(voiceConfirmation.targetTab, voiceConfirmation.targetSubpage); applyAIActions(voiceConfirmation.actions); setVoiceLog((prev) => [{ id: Date.now(), text: voiceConfirmation.summary || "Updated.", count: voiceConfirmation.actions.length, time: "Just now", audioUrl: voiceConfirmation.attachment?.url || null, audioKey: voiceConfirmation.attachment?.key || null }, ...prev]); setVoiceConfirmation(null); setShowGlobalVoiceLog(false); }} className="dashboard-action rounded-full bg-lime-300 px-3 py-2 text-xs font-semibold text-neutral-950">Apply update</button>
+          </div>
+        </div>
+      )}
       {showRewind && (
         <div className="fixed inset-0 z-50 bg-neutral-950/35 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="daily-rewind-title">
           <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-neutral-200 p-6">
@@ -1125,7 +1490,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
       )}
       {saveSnapshot.isError && <div className="fixed top-3 right-3 z-50 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 shadow-sm">Your latest change could not be saved. Please retry.</div>}
       {/* sidebar — desktop only */}
-      <div className="hidden md:flex fixed inset-y-0 left-0 z-20 w-20 bg-neutral-950 flex-col items-center py-6 gap-2 overflow-hidden">
+      <nav aria-label="Primary" className="dashboard-sidebar hidden md:flex fixed inset-y-0 left-0 z-20 w-20 flex-col items-center py-6 gap-2 overflow-hidden">
         <div className="w-9 h-9 rounded-xl bg-lime-400 flex items-center justify-center mb-6">
           <Gauge size={18} className="text-neutral-950" />
         </div>
@@ -1140,27 +1505,35 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
             <Icon size={19} />
           </button>
         ))}
-      </div>
+      </nav>
 
       {/* dock — mobile only */}
-      <MobileDock items={navItems} active={tab} onChange={setTab} />
+      <MobileDock items={navItems} active={tab} onChange={setTab} onVoice={() => setShowGlobalVoiceLog(true)} />
 
       {/* main */}
-      <div className="flex-1 md:ml-20 p-4 md:p-6 overflow-y-auto pb-28 md:pb-6 min-w-0">
-        <div className="flex items-center justify-between mb-6 gap-3">
-          <div>
+      <main id="main-content" className="dashboard-main flex-1 md:ml-20 p-4 md:p-6 overflow-y-auto pb-28 md:pb-6 min-w-0">
+        <div className="dashboard-topbar flex items-center justify-between mb-6 gap-4">
+          <div className="min-w-0">
             <h1 className="text-lg md:text-xl font-semibold text-neutral-900">
               {tab === "home" ? "Good morning" : domainMeta[tab]?.label}
             </h1>
             <p className="text-sm text-neutral-500">
-              {tab === "home" ? "Here's where things stand across your week." : "Friday, August 28, 2026"}
+              {tab === "home" ? "Here's where things stand across your week." : formattedToday}
             </p>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="dashboard-header-stats hidden lg:grid grid-cols-2 gap-2 shrink-0">
+            <div className="dashboard-mini-stat"><span className="dashboard-mini-stat-value">{tab === "home" ? `${overall}%` : tab === "health" ? `${Math.round(goalProgress)}%` : tab === "finance" ? fmt(netPosition) : tab === "work" ? `${unfinishedTodos.length}` : `${upcomingTodos.length}`}</span><span className="dashboard-mini-stat-label">{tab === "home" ? "life score" : tab === "health" ? "goal progress" : tab === "finance" ? "net position" : tab === "work" ? "open tasks" : "up next"}</span></div>
+            <div className="dashboard-mini-stat"><span className="dashboard-mini-stat-value">{tab === "home" ? `${todayOverall}%` : tab === "health" ? `${currentWeight}kg` : tab === "finance" ? fmt(totalOutstandingDebt) : `${todayTodos.filter((item) => !item.done).length}`}</span><span className="dashboard-mini-stat-label">{tab === "home" ? "today" : tab === "health" ? "current weight" : tab === "finance" ? "outstanding" : "today open"}</span></div>
+          </div>
+          <div className="dashboard-header-actions flex items-center gap-3 shrink-0">
             {tab !== "home" && <IdeaButton loading={ideasMutation.isPending && ideaResult?.section === (domainMeta[tab]?.label || tab)} onClick={() => askIdeas(domainMeta[tab]?.label || tab, JSON.stringify({ tab, todos, income: incomeRows, debts: debtRows, applications, assignments, people }))} />}
-            <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center">
-              <Search size={16} className="text-neutral-400" />
-            </div>
+            <button type="button" aria-label="Open voice log" onClick={() => setShowGlobalVoiceLog(true)} className={`dashboard-action relative w-9 h-9 rounded-full flex items-center justify-center ${voiceLoading ? "bg-lime-400 text-neutral-950" : "bg-white text-neutral-500"}`}>
+              {voiceLoading ? <span className="absolute inset-0 rounded-full border-2 border-neutral-950/20 border-t-neutral-950 animate-spin" /> : null}
+              <Mic size={16} className="relative" />
+            </button>
+            <button type="button" onClick={logout} aria-label="Lock dashboard" title="Lock dashboard" className="dashboard-action w-9 h-9 rounded-full bg-white flex items-center justify-center text-neutral-500">
+              <LockKeyhole size={15} />
+            </button>
             <div className="relative">
               <button onClick={() => setShowNotifications((v) => !v)} aria-label="Notifications" className="w-9 h-9 rounded-full bg-white flex items-center justify-center">
                 <Bell size={16} className="text-neutral-400" />
@@ -1171,107 +1544,154 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
                 <div className="flex flex-col gap-2">{nudges.length === 0 && upcomingTodos.length === 0 && <div className="rounded-xl bg-neutral-50 px-3 py-3 text-xs text-neutral-500">You’re all caught up. No new notifications.</div>}{nudges.map((n, i) => <button type="button" key={i} onClick={() => openNotification(n.target, n.sub)} className="text-left rounded-xl bg-lime-50 px-3 py-2 text-xs text-lime-900 transition-transform duration-150 hover:-translate-y-0.5 active:scale-[0.99]">{n.text}<span className="block text-[10px] text-lime-700 mt-0.5">Open {domainMeta[n.target]?.label || n.target}</span></button>)}{upcomingTodos.slice(0, 3).map((t) => <button type="button" key={t.id} onClick={() => { const destination = notificationTargetForTodo(t); openNotification(destination.target, destination.sub); }} className="text-left rounded-xl bg-neutral-50 px-3 py-2 text-xs text-neutral-700 transition-transform duration-150 hover:-translate-y-0.5 active:scale-[0.99]">Upcoming: {t.text} · {t.due}<span className="block text-[10px] text-neutral-400 mt-0.5">Open related section</span></button>)}</div>
               </div>}
             </div>
-            <button type="button" onClick={() => logout()} aria-label="Log out" title="Log out" className="w-9 h-9 rounded-full bg-white flex items-center justify-center text-neutral-400 hover:text-neutral-900 transition-colors">
-              <LogOut size={16} />
-            </button>
           </div>
         </div>
 
         {tab === "home" && (
           <div className="flex flex-col gap-5">
             <SubTabs
-              tabs={[{ key: "dashboard", label: "Dashboard" }, { key: "todo", label: "Todo" }, { key: "upcoming", label: "Upcoming" }]}
+              tabs={[{ key: "dashboard", label: "Dashboard" }, { key: "today", label: "Today" }, { key: "todo", label: "Todo" }, { key: "upcoming", label: "Upcoming" }]}
               active={homeSub}
               onChange={setHomeSub}
             />
 
-            {homeSub === "dashboard" && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                <div className="md:col-span-2 flex flex-col gap-5">
-                  <div className="bg-neutral-950 rounded-2xl p-6 text-white">
-                    <div className="flex items-end justify-between mb-4">
-                      <div>
-                        <p className="text-sm text-neutral-400 mb-1">Overall life score</p>
-                        <p className="text-4xl font-semibold text-lime-400">{overall}%</p>
-                      </div>
-                      <div className="flex items-center gap-1 text-emerald-400 text-sm">
-                        <TrendingUp size={14} /> +5 this week
-                      </div>
-                    </div>
-                    <div style={{ height: 90 }}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={trendData}>
-                          <defs>
-                            <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor="#A3E635" stopOpacity={0.5} />
-                              <stop offset="100%" stopColor="#A3E635" stopOpacity={0} />
-                            </linearGradient>
-                          </defs>
-                          <Area type="monotone" dataKey="score" stroke="#A3E635" strokeWidth={2} fill="url(#g)" />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
+            {homeSub === "today" && (
+              <div className="flex flex-col gap-5">
+                <div className="bg-neutral-950 rounded-2xl p-6 text-white flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+                  <div>
+                    <p className="text-sm text-neutral-400 mb-1">Your focus for today</p>
+                    <h2 className="text-2xl font-semibold tracking-tight">One clear step in every part of life.</h2>
+                    <p className="text-sm text-neutral-400 mt-2">{todayCategories.reduce((sum, category) => sum + (todayCardItems[category.key] || []).filter((item) => item.done).length, 0)} completed items across {todayCategories.length} areas</p>
                   </div>
-
-                  <SectionCard title="Domain scores">
-                    <div className="flex justify-between px-2">
-                      <ScoreRing label="Finance" score={financeScore} colorKey="blue" />
-                      <ScoreRing label="Fitness" score={fitnessScore} colorKey="emerald" />
-                      <ScoreRing label="Work" score={workScore} colorKey="amber" />
-                      <ScoreRing label="School" score={schoolScore} colorKey="violet" />
-                      <ScoreRing label="Relationships" score={relationshipScore} colorKey="rose" />
-                    </div>
-                  </SectionCard>
+                  <div className="flex items-center gap-3">
+                    <ScoreRing label="Today" score={todayOverall} colorKey="lime" />
+                  </div>
                 </div>
-
-                <div className="flex flex-col gap-5">
-                  <SectionCard title="Coach">
-                    <div className="flex flex-col gap-3">
-                      {nudges.map((n, i) => (
-                        <div key={i} className="flex items-start gap-3 bg-lime-50 rounded-xl p-3">
-                          <n.icon size={16} className="text-lime-700 mt-0.5" />
-                          <p className="text-sm text-lime-900">{n.text}</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                  {todayCategories.map((category) => {
+                    const Icon = category.icon;
+                    const c = colorMap[category.color];
+                    const items = todayCardItems[category.key] || [];
+                    const completed = items.filter((item) => item.done).length;
+                    const progress = Math.round((completed / Math.max(items.length, 1)) * 100);
+                    return (
+                      <div key={category.key} className="bg-white rounded-2xl p-5 flex flex-col gap-4 shadow-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className={`w-10 h-10 rounded-xl ${c.badgeBg} flex items-center justify-center shrink-0`}><Icon size={18} className={c.badgeText} /></div>
+                            <div className="min-w-0"><h3 className="font-semibold text-neutral-900">{category.label}</h3><p className="text-xs text-neutral-400">{completed}/{items.length} complete</p></div>
+                          </div>
+                          <div className="relative w-12 h-12 shrink-0">
+                            <svg width="48" height="48" viewBox="0 0 48 48" className="-rotate-90"><circle cx="24" cy="24" r="19" fill="none" stroke="#F1F1EF" strokeWidth="5" /><circle cx="24" cy="24" r="19" fill="none" stroke={c.ring} strokeWidth="5" strokeLinecap="round" strokeDasharray={2 * Math.PI * 19} strokeDashoffset={2 * Math.PI * 19 - (progress / 100) * 2 * Math.PI * 19} /></svg>
+                            <span className="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-neutral-700">{progress}%</span>
+                          </div>
                         </div>
-                      ))}
-                      <button onClick={askPerformanceAdvice} disabled={performanceAdviceMutation.isPending} className="px-3 py-2 bg-neutral-950 text-white text-xs font-medium rounded-lg">{performanceAdviceMutation.isPending ? "Reviewing…" : "Get advice on my performance"}</button>
-                      {performanceAdvice && <div className="bg-neutral-50 rounded-xl p-3 text-sm text-neutral-700 whitespace-pre-wrap">{performanceAdvice}</div>}
-                      <div className="flex justify-end"><IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Overall performance"} onClick={() => askIdeas("Overall performance", JSON.stringify({ overall, financeScore, fitnessScore, workScore, schoolScore, relationshipScore, unfinishedTodos: todos.filter((t) => !t.done) }))} /></div>
-                      {ideaResult && <div className="bg-lime-50 rounded-xl p-3 text-xs text-lime-900 whitespace-pre-wrap"><p className="font-medium mb-1">{ideaResult.section}</p>{ideaResult.text || "Generating ideas…"}</div>}
-                      <div className="pt-2 border-t border-neutral-100">
-                        <p className="text-xs font-medium text-neutral-500 mb-2">Ask your AI life coach</p>
-                        <div className="flex gap-2"><input id="life-coach-input" value={coachInput} onChange={(e) => setCoachInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { askLifeCoach(coachInput); setCoachInput(""); } }} placeholder="What should I focus on today?" className="flex-1 text-xs border border-neutral-200 rounded-lg px-3 py-2" /><button onClick={() => { askLifeCoach(coachInput); setCoachInput(""); }} disabled={coachMutation.isPending || !coachInput.trim()} className="px-3 py-2 bg-lime-400 text-neutral-950 text-xs font-medium rounded-lg">{coachMutation.isPending ? "…" : "Ask"}</button></div>
-                        {coachMessages.slice(-2).map((m, i) => <div key={i} className={`mt-2 rounded-xl px-3 py-2 text-xs ${m.role === "user" ? "bg-neutral-950 text-white" : "bg-lime-50 text-lime-900"}`}>{m.text}</div>)}
-                      </div>
-                      <div className="pt-2 border-t border-neutral-100 flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-xs font-medium text-neutral-700">Daily Rewind</p>
-                          <p className="text-[11px] text-neutral-400">Optional 10 PM local voice check-in</p>
+                        <div className="flex flex-col gap-2">
+                          {items.map((item) => (
+                            <div key={item.id} className="flex items-start gap-2.5 rounded-xl bg-neutral-50 px-3 py-2.5">
+                              <button type="button" onClick={() => toggleTodayItem(category.key, item)} disabled={item.source === "workout"} aria-label={`${item.done ? "Completed" : "Complete"}: ${item.text}`} className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${item.done ? "bg-lime-400" : "border border-neutral-300 bg-white"} disabled:cursor-default`}>
+                                {item.done && <Check size={12} className="text-neutral-950" />}
+                              </button>
+                              <p className={`text-sm leading-5 ${item.done ? "text-neutral-400 line-through" : "text-neutral-700"}`}>{item.text}</p>
+                            </div>
+                          ))}
                         </div>
-                        <button type="button" onClick={() => rewindEnabledMutation.mutate({ enabled: !rewindStatusQuery.data?.enabled, timezone: userTimezone })} disabled={rewindEnabledMutation.isPending || rewindStatusQuery.isLoading} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${rewindStatusQuery.data?.enabled ? "bg-neutral-950 text-white" : "bg-neutral-100 text-neutral-700"}`}>
-                          {rewindEnabledMutation.isPending ? "Saving…" : rewindStatusQuery.data?.enabled ? "On" : "Enable"}
-                        </button>
+                        <div className="flex gap-2 pt-1">
+                          <input value={todayDraft[category.key] || ""} onChange={(e) => setTodayDraft((prev) => ({ ...prev, [category.key]: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") addTodayPlanItem(category.key); }} placeholder={`Add ${category.label.toLowerCase()} item…`} className="min-w-0 flex-1 text-xs border border-neutral-200 rounded-lg px-3 py-2" />
+                          <button type="button" onClick={() => addTodayPlanItem(category.key)} className="px-3 py-2 bg-neutral-950 text-white text-xs font-medium rounded-lg flex items-center gap-1"><Plus size={13} /> Add</button>
+                        </div>
                       </div>
-                    </div>
-                  </SectionCard>
-                  <SectionCard title="Net position">
-                    <p className="text-2xl font-semibold text-neutral-900">{fmt(netPosition)}</p>
-                    <p className="text-xs text-neutral-500 mt-1">Expected income minus outstanding debt</p>
-                  </SectionCard>
-                  <SectionCard title="Weight goal">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-neutral-600">{currentWeight}kg → {targetWeight}kg</span>
-                      <span className="text-sm font-medium text-emerald-600">{Math.round(goalProgress)}%</span>
-                    </div>
-                    <div className="w-full h-2 bg-neutral-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${goalProgress}%` }} />
-                    </div>
-                  </SectionCard>
+                    );
+                  })}
                 </div>
               </div>
             )}
 
+            {homeSub === "dashboard" && (
+              <div className="reference-home-grid dashboard-workspace-grid grid grid-cols-1 xl:grid-cols-[minmax(0,1.4fr)_minmax(19rem,0.85fr)] gap-6">
+                <div className="reference-home-main dashboard-primary-column flex flex-col gap-6 min-w-0">
+                  <section className="reference-welcome rounded-[1.5rem] bg-[#f7f8f5] p-6 md:p-8 overflow-hidden">
+                    <div className="flex items-center justify-between gap-6">
+                      <div className="max-w-[32rem]">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#5fbf9e]">Your personal operating system</p>
+                        <h2 className="mt-3 text-3xl md:text-4xl font-semibold tracking-[-0.055em] text-neutral-950">Ready to make today count?</h2>
+                        <p className="mt-3 max-w-md text-sm leading-6 text-neutral-500">One clear step in every part of life. Keep the important things moving without carrying them all in your head.</p>
+                      </div>
+                      <div className="reference-welcome-mark hidden sm:flex" aria-hidden="true"><span>{user?.name?.charAt(0)?.toUpperCase() || "P"}</span></div>
+                    </div>
+                  </section>
+
+                  <div className="reference-metrics-grid grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="reference-metric dashboard-card flex items-center gap-3 rounded-[1.2rem] bg-white p-4">
+                      <div className="reference-metric-icon reference-metric-icon-mint"><Check size={18} /></div>
+                      <div><p className="text-2xl font-semibold tracking-tight text-neutral-950">{todayCategories.reduce((sum, category) => sum + (todayCardItems[category.key] || []).filter((item) => item.done).length, 0)}</p><p className="text-[11px] text-neutral-500">Tasks done today</p></div>
+                    </div>
+                    <div className="reference-metric dashboard-card flex items-center gap-3 rounded-[1.2rem] bg-white p-4">
+                      <div className="reference-metric-icon"><Gauge size={18} /></div>
+                      <div><p className="text-2xl font-semibold tracking-tight text-neutral-950">{todayOverall}%</p><p className="text-[11px] text-neutral-500">Today completed</p></div>
+                    </div>
+                    <div className="reference-metric dashboard-card flex items-center gap-3 rounded-[1.2rem] bg-white p-4">
+                      <div className="reference-metric-icon reference-metric-icon-coral"><HeartPulse size={18} /></div>
+                      <div><p className="text-2xl font-semibold tracking-tight text-neutral-950">{overall}%</p><p className="text-[11px] text-neutral-500">Life score</p></div>
+                    </div>
+                  </div>
+
+                  <SectionCard title="Today" right={<button type="button" onClick={() => setHomeSub("today")} className="reference-inline-action">View all <ChevronRight size={14} /></button>}>
+                    <div className="reference-task-list">
+                      {todayCategories.slice(0, 6).map((category) => {
+                        const Icon = category.icon;
+                        const items = todayCardItems[category.key] || [];
+                        const firstItem = items[0] || { text: category.defaultText, done: false };
+                        const completed = items.filter((item) => item.done).length;
+                        const progress = Math.round((completed / Math.max(items.length, 1)) * 100);
+                        return (
+                          <div key={category.key} className="reference-task-row">
+                            <div className="reference-task-icon"><Icon size={18} /></div>
+                            <div className="reference-task-copy min-w-0"><p className="font-semibold text-neutral-900">{category.label}</p><p className="truncate text-xs text-neutral-500">{firstItem.text}</p></div>
+                            <span className="hidden sm:inline text-xs text-neutral-400">{firstItem.time || `${items.length} item${items.length === 1 ? "" : "s"}`}</span>
+                            <ScoreRing label="" score={progress} colorKey={category.color} />
+                            <button type="button" onClick={() => setTab(category.domain)} className="reference-row-action">{firstItem.done ? "View" : "Open"}</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </SectionCard>
+                </div>
+
+                <aside className="reference-home-side dashboard-support-column flex flex-col gap-6">
+                  <SectionCard title="Your life in balance" right={<span className="reference-select-label">This week <ChevronDown size={13} /></span>}>
+                    <div className="reference-chart-tabs"><span className="active">Overview</span><span>Trends</span></div>
+                    <div className="h-56 pt-3">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={trendData} margin={{ top: 10, right: 2, left: -18, bottom: 0 }}>
+                          <CartesianGrid vertical={false} stroke="rgba(17,18,15,0.07)" />
+                          <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#9a9d98" }} />
+                          <YAxis hide domain={[0, 100]} />
+                          <Tooltip cursor={{ stroke: "rgba(17,18,15,0.12)" }} contentStyle={{ borderRadius: 12, border: "1px solid rgba(17,18,15,0.08)", boxShadow: "0 12px 30px rgba(17,18,15,0.1)", fontSize: 12 }} />
+                          <Line type="monotone" dataKey="score" stroke="#11120f" strokeWidth={2.4} dot={{ r: 4, fill: "#11120f", stroke: "#fffefa", strokeWidth: 2 }} activeDot={{ r: 5, fill: "#5fbf9e" }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="reference-chart-legend"><span><i className="dot dot-mint" /> Wellness</span><span><i className="dot dot-ink" /> Productivity</span><span><i className="dot dot-coral" /> Learning</span></div>
+                  </SectionCard>
+
+                  <SectionCard title="Coach">
+                    <div className="flex flex-col gap-2.5">
+                      {nudges.slice(0, 3).map((n, i) => <div key={i} className="reference-nudge"><n.icon size={15} /><span>{n.text}</span></div>)}
+                      <button onClick={askPerformanceAdvice} disabled={performanceAdviceMutation.isPending} className="reference-primary-action">{performanceAdviceMutation.isPending ? "Reviewing…" : "Get advice on my performance"}<ChevronRight size={15} /></button>
+                    </div>
+                  </SectionCard>
+
+                  <section className="reference-insight rounded-[1.35rem] bg-[#f7f8f5] p-5">
+                    <div className="flex items-center gap-4"><div className="reference-insight-mark" aria-hidden="true">✦</div><div><p className="font-semibold text-neutral-950">Small habits, big life.</p><p className="mt-1 text-xs leading-5 text-neutral-500">Build consistency with guided routines and keep your attention on what matters next.</p></div></div>
+                    <button type="button" onClick={() => setHomeSub("today")} className="reference-underlined-action">Explore today <ChevronRight size={14} /></button>
+                  </section>
+                </aside>
+              </div>
+            )}
+
             {homeSub === "todo" && (
-              <SectionCard title="Today — Friday, August 28">
+              <SectionCard title={`Today — ${formattedToday}`}>
                 <div className="flex flex-col">
                   {todayTodos.length === 0 && <p className="text-sm text-neutral-400 py-4">Nothing on today's list yet.</p>}
                   {todayTodos.map((t) => (
@@ -1444,20 +1864,34 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
                         <th className="pb-2 font-medium">Balance</th>
                         <th className="pb-2 font-medium">Date</th>
                         <th className="pb-2 font-medium">Status</th>
+                        <th className="pb-2 font-medium text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredDebts.map((d) => (
                         <tr key={d.id} className="border-t border-neutral-100">
-                          <td className="py-3 text-neutral-800"><div>{d.name}</div><div className="flex gap-1 mt-1"><button onClick={() => payDebt(d.id)} className="text-[11px] text-emerald-600">Pay</button><button onClick={() => addDebtAmount(d.id)} className="text-[11px] text-rose-600">Add on</button></div></td>
+                          <td className="py-3 text-neutral-800"><div className="font-medium">{d.name}</div><div className="text-[11px] text-neutral-400 mt-1">Added {d.date}</div></td>
                           <td className="py-3 text-neutral-600">{fmt(d.debt)}</td>
                           <td className="py-3 text-neutral-600">{fmt(d.paid)}</td>
                           <td className="py-3 text-neutral-600">{fmt(d.balance)}</td>
                           <td className="py-3 text-neutral-500">{d.date}</td>
                           <td className="py-3">
-                            <button onClick={() => setDebts(prev => prev.map(x => x.id !== d.id ? x : { ...x, status: x.status === "Active" ? "Paid" : "Active" }))}>
+                            <button type="button" onClick={() => setDebts(prev => prev.map(x => x.id !== d.id ? x : { ...x, status: x.status === "Active" ? "Paid" : "Active" }))} aria-label={`Mark ${d.name} as ${d.status === "Active" ? "paid" : "active"}`}>
                               <StatusPill status={d.status} />
                             </button>
+                          </td>
+                          <td className="py-3">
+                            <div className="flex justify-end gap-2">
+                              <button type="button" onClick={() => setDebtAction({ id: d.id, type: "pay", amount: "" })} className="rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100">Pay</button>
+                              <button type="button" onClick={() => setDebtAction({ id: d.id, type: "add", amount: "" })} className="rounded-lg bg-rose-50 px-2.5 py-1.5 text-[11px] font-medium text-rose-700 hover:bg-rose-100">Add on</button>
+                            </div>
+                            {debtAction?.id === d.id && (
+                              <div className="mt-2 flex items-center justify-end gap-2">
+                                <input autoFocus type="number" min="1" value={debtAction.amount} onChange={(e) => setDebtAction((prev) => ({ ...prev, amount: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") submitDebtAction(); if (e.key === "Escape") setDebtAction(null); }} placeholder={debtAction.type === "pay" ? "Payment" : "Add amount"} aria-label={`${debtAction.type === "pay" ? "Payment" : "Add-on"} amount for ${d.name}`} className="w-24 rounded-lg border border-neutral-200 px-2 py-1.5 text-xs" />
+                                <button type="button" onClick={submitDebtAction} className="rounded-lg bg-neutral-950 px-2.5 py-1.5 text-[11px] font-medium text-white">Save</button>
+                                <button type="button" onClick={() => setDebtAction(null)} className="rounded-lg bg-neutral-100 px-2.5 py-1.5 text-[11px] font-medium text-neutral-600">Cancel</button>
+                              </div>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -1510,94 +1944,50 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
 
             {healthSub === "fitness" && (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                  <SectionCard title="Weight goal" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Weight goal"} onClick={() => askIdeas("Weight goal", JSON.stringify({ currentWeight, targetWeight, targetDate, goalProgress }))} />}>
-                    <p className="text-sm text-neutral-500 mb-1">Target</p>
-                    <p className="text-2xl font-semibold text-neutral-900 mb-3">{targetWeight}kg by {targetDate}</p>
-                    <div className="w-full h-2 bg-neutral-100 rounded-full overflow-hidden mb-2">
-                      <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${goalProgress}%` }} />
+                <div className="grid grid-cols-1 xl:grid-cols-[1.35fr_0.65fr] gap-5">
+                  <SectionCard title="Your training cycle" right={<div className="flex items-center gap-2"><IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Training plan"} onClick={() => askIdeas("Training plan", JSON.stringify({ fitnessPlan, currentFitnessDay }))} /><button type="button" onClick={coachSession.active ? stopCoach : startCoach} className={`dashboard-action rounded-full px-3 py-1.5 text-xs font-semibold ${coachSession.active ? "bg-rose-50 text-rose-700" : "bg-neutral-950 text-white"}`}>{coachSession.active ? "End coach" : "Live coach"}</button>{favoriteExercises.length > 0 && <span className="hidden lg:inline text-[11px] text-neutral-400">Learns from {favoriteExercises.slice(0, 2).join(" · ")}</span>}</div>}>
+                    <div className="flex flex-wrap gap-2 mb-5">
+                      {fitnessPlan.map((day, index) => <button key={day.key} type="button" onClick={() => setFitnessDayIndex(index)} className={`dashboard-action rounded-full px-3 py-2 text-xs font-semibold ${index === fitnessDayIndex % fitnessPlan.length ? "bg-neutral-950 text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"}`}>{index + 1} · {day.label}</button>)}
                     </div>
-                    <p className="text-xs text-neutral-500">{Math.round(goalProgress)}% of the way there — currently {currentWeight}kg</p>
+                    <div className="flex items-start justify-between gap-4 mb-4">
+                      <div><p className="text-2xl font-semibold tracking-tight text-neutral-950">{currentFitnessDay.label}</p><p className="mt-1 text-sm text-neutral-500">{currentFitnessDay.focus}</p></div>
+                      <button type="button" onClick={() => setFitnessDayIndex((index) => (index + 1) % fitnessPlan.length)} className="dashboard-action rounded-full bg-lime-300 px-3 py-2 text-xs font-semibold text-neutral-950">Next day</button>
+                    </div>
+                    {coachSession.active && coachExercise && <div className="mb-5 rounded-2xl bg-neutral-950 p-4 text-white"><div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-lime-300">Live coach · {Math.floor(coachSeconds / 60)}:{String(coachSeconds % 60).padStart(2, "0")}</p><p className="mt-2 text-lg font-semibold">{coachExercise.name}</p><p className="mt-1 text-xs text-white/60">Set {coachSession.setIndex} of {coachExercise.sets} · Target {coachExercise.reps} · {coachExercise.rest} rest</p><p className="mt-2 max-w-[34rem] text-xs leading-5 text-white/70">Recommended now: <strong className="font-semibold text-white">{currentCoachRecommendation?.load} kg × {currentCoachRecommendation?.reps} reps</strong>. {currentCoachRecommendation?.rationale} {priorityMuscle ? `Current focus: ${priorityMuscle}.` : ""}</p><div className="mt-3 flex flex-wrap gap-1.5">{coachMuscleCoverage.map((muscle) => <span key={muscle} className="rounded-full bg-white/10 px-2 py-1 text-[11px] text-white/75">{muscle}</span>)}{coachRestSeconds > 0 && <span className="rounded-full bg-lime-300/15 px-2 py-1 text-[11px] text-lime-200">Rest {Math.floor(coachRestSeconds / 60)}:{String(coachRestSeconds % 60).padStart(2, "0")}</span>}</div></div><span className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-white/75">{coachCompleted}%</span></div><div className="mt-4 grid grid-cols-2 gap-2"><select value={coachSession.load} onChange={(e) => setCoachSession({ ...coachSession, load: e.target.value })} className="rounded-xl bg-white/10 px-3 py-2 text-sm text-white outline-none"><option value="" className="text-neutral-900">Load (kg)</option>{[2.5, 5, 7.5, 10, 12.5, 15, 20, 25, 30, 40, 50, 60, 70, 80, 100, Number(currentCoachRecommendation?.load)].filter((load, index, list) => Number.isFinite(load) && list.indexOf(load) === index).sort((a, b) => a - b).map((load) => <option key={load} value={load} className="text-neutral-900">{load} kg</option>)}</select><select value={coachSession.reps} onChange={(e) => setCoachSession({ ...coachSession, reps: e.target.value })} className="rounded-xl bg-white/10 px-3 py-2 text-sm text-white outline-none"><option value="" className="text-neutral-900">Reps completed</option>{Array.from({ length: 20 }, (_, index) => index + 1).map((reps) => <option key={reps} value={reps} className="text-neutral-900">{reps} reps</option>)}</select></div><button type="button" onClick={finishCoachSet} disabled={!coachSession.load || !coachSession.reps} className="mt-3 w-full rounded-xl bg-lime-300 px-3 py-2 text-sm font-semibold text-neutral-950 disabled:cursor-not-allowed disabled:opacity-40">Save set & continue</button></div>}
+                    {currentFitnessDay.exercises.length ? <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-sm"><thead><tr className="text-left text-xs text-neutral-400"><th className="pb-2 font-medium">Exercise</th><th className="pb-2 font-medium">Sets</th><th className="pb-2 font-medium">Reps</th><th className="pb-2 font-medium">Rest</th><th className="pb-2 font-medium">Done</th></tr></thead><tbody>{currentFitnessDay.exercises.map((exercise) => { const item = { id: `plan-${currentFitnessDay.key}-${exercise.name}`, text: `${exercise.name} · ${exercise.sets} sets · ${exercise.reps}`, done: Boolean(todayPlan.gym?.some((entry) => entry.id === `plan-${currentFitnessDay.key}-${exercise.name}` && entry.done)), source: "plan" }; return <tr key={exercise.name} className="border-t border-neutral-100"><td className="py-3 font-medium text-neutral-800">{exercise.name}</td><td className="py-3 text-neutral-500">{exercise.sets}</td><td className="py-3 text-neutral-500">{exercise.reps}</td><td className="py-3 text-neutral-500">{exercise.rest}</td><td className="py-3"><button type="button" onClick={() => toggleTodayItem("gym", item)} aria-label={`${item.done ? "Unmark" : "Mark"} ${exercise.name}`} className={`h-7 w-7 rounded-full flex items-center justify-center ${item.done ? "bg-lime-300 text-neutral-950" : "bg-neutral-100 text-neutral-400"}`}>{item.done ? <Check size={14} /> : <Plus size={14} />}</button></td></tr>; })}</tbody></table></div> : <p className="rounded-2xl bg-lime-50 p-4 text-sm text-lime-900">Active recovery only: walk, stretch, or do light mobility. No lifting today.</p>}
+                    {currentFitnessDay.key !== "rest" && <div className="mt-4 grid grid-cols-2 md:grid-cols-[1.4fr_0.45fr_0.65fr_0.65fr_auto] gap-2"><input placeholder="Add exercise" value={newPlanExercise.name} onChange={(e) => setNewPlanExercise({ ...newPlanExercise, name: e.target.value })} className="col-span-2 md:col-span-1 rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input type="number" placeholder="Sets" value={newPlanExercise.sets} onChange={(e) => setNewPlanExercise({ ...newPlanExercise, sets: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input placeholder="Reps" value={newPlanExercise.reps} onChange={(e) => setNewPlanExercise({ ...newPlanExercise, reps: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input placeholder="Rest" value={newPlanExercise.rest} onChange={(e) => setNewPlanExercise({ ...newPlanExercise, rest: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><button type="button" onClick={addPlanExercise} className="rounded-xl bg-neutral-950 px-3 py-2 text-xs font-semibold text-white">Add to plan</button></div>}
                   </SectionCard>
-                  <StatCard icon={Dumbbell} iconColor="emerald" label="Workouts (7 days)" value="3" delta="On pace" positive />
-                  <StatCard icon={Flame} iconColor="amber" label="Days since last workout" value="2" />
+                  <SectionCard title="Weight goal" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Weight goal"} onClick={() => askIdeas("Weight goal", JSON.stringify({ currentWeight, targetWeight, targetDate, goalProgress }))} />}>
+                    <p className="text-sm text-neutral-500">Current → target</p><p className="mt-1 text-2xl font-semibold text-neutral-950">{currentWeight}kg <span className="text-neutral-300">→</span> {targetWeight}kg</p><div className="mt-4 h-2 overflow-hidden rounded-full bg-neutral-100"><div className="h-full rounded-full bg-emerald-400" style={{ width: `${goalProgress}%` }} /></div><p className="mt-2 text-xs text-neutral-500">{Math.round(goalProgress)}% toward {targetDate}. Use the same scale and conditions when possible.</p><div className="mt-5 flex gap-2"><input type="number" step="0.1" placeholder="Today's kg" value={newWeight} onChange={(e) => setNewWeight(e.target.value)} className="min-w-0 flex-1 rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><button onClick={addWeight} className="dashboard-action rounded-xl bg-lime-300 px-3 py-2 text-xs font-semibold text-neutral-950">Log weight</button></div>
+                  </SectionCard>
                 </div>
-
-                <SectionCard title="Weight trend" right={
-                  <div className="flex items-center gap-2">
-                    <IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Weight trend"} onClick={() => askIdeas("Weight trend", JSON.stringify({ weight }))} />
-                    <input type="number" step="0.1" placeholder="Today's kg" value={newWeight} onChange={(e) => setNewWeight(e.target.value)} className="w-24 text-sm border border-neutral-200 rounded-lg px-2 py-1.5" />
-                    <button onClick={addWeight} className="px-3 py-1.5 bg-lime-400 text-neutral-950 text-xs font-medium rounded-lg flex items-center gap-1"><Plus size={12} /> Log</button>
-                  </div>
-                }>
-                  <div style={{ height: 200 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={weight}>
-                        <CartesianGrid stroke="#F5F5F4" vertical={false} />
-                        <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#A3A3A3" }} axisLine={false} tickLine={false} />
-                        <YAxis domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "#A3A3A3" }} axisLine={false} tickLine={false} />
-                        <Tooltip />
-                        <Line type="monotone" dataKey="weight" stroke="#34D399" strokeWidth={2} dot={{ r: 3 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
+                <SectionCard title="Weight trend & strength progress" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Progress"} onClick={() => askIdeas("Progress", JSON.stringify({ weight, liftLog }))} />}>
+                  <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-6"><div style={{ height: 220 }}><ResponsiveContainer width="100%" height="100%"><LineChart data={weight}><CartesianGrid stroke="#F5F5F4" vertical={false} /><XAxis dataKey="date" tick={{ fontSize: 11, fill: "#A3A3A3" }} axisLine={false} tickLine={false} /><YAxis domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "#A3A3A3" }} axisLine={false} tickLine={false} /><Tooltip /><Line type="monotone" dataKey="weight" stroke="#34D399" strokeWidth={2} dot={{ r: 3 }} /></LineChart></ResponsiveContainer></div><div><div className="mb-3 flex items-center justify-between"><div><p className="text-sm font-semibold text-neutral-950">Lift log</p><p className="text-xs text-neutral-500">Compare load × reps over time</p></div><span className="rounded-full bg-lime-50 px-2.5 py-1 text-xs font-medium text-lime-700">{liftLog.length} entries</span></div><div className="max-h-48 overflow-y-auto">{liftLog.map((lift) => <div key={lift.id} className="flex items-center justify-between border-t border-neutral-100 py-2.5"><div><p className="text-sm font-medium text-neutral-800">{lift.exercise}</p><p className="text-xs text-neutral-400">{lift.date} · {lift.sets} sets × {lift.reps} reps</p></div><span className="text-sm font-semibold tabular-nums text-neutral-700">{lift.load}{lift.unit}</span></div>)}</div><div className="mt-4 grid grid-cols-2 gap-2"><input placeholder="Exercise" value={newLift.exercise} onChange={(e) => setNewLift({ ...newLift, exercise: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input type="number" placeholder="Load kg" value={newLift.load} onChange={(e) => setNewLift({ ...newLift, load: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input type="number" placeholder="Reps" value={newLift.reps} onChange={(e) => setNewLift({ ...newLift, reps: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input type="number" placeholder="Sets" value={newLift.sets} onChange={(e) => setNewLift({ ...newLift, sets: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /></div><button type="button" onClick={addLift} className="mt-2 rounded-xl bg-neutral-950 px-3 py-2 text-xs font-semibold text-white">Add lift</button></div></div>
                 </SectionCard>
-
-                <SectionCard title="Workout log" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Workout log"} onClick={() => askIdeas("Workout log", JSON.stringify({ workouts }))} />}>
-                  <div className="flex flex-col sm:flex-row gap-2 mb-4">
-                    <input placeholder="Workout type" value={newWorkout.type} onChange={(e) => setNewWorkout({ ...newWorkout, type: e.target.value })} className="flex-1 text-sm border border-neutral-200 rounded-lg px-3 py-2" />
-                    <input placeholder="Duration (e.g. 45 min)" value={newWorkout.duration} onChange={(e) => setNewWorkout({ ...newWorkout, duration: e.target.value })} className="sm:w-40 text-sm border border-neutral-200 rounded-lg px-3 py-2" />
-                    <button onClick={addWorkout} className="px-4 py-2 bg-lime-400 text-neutral-950 text-sm font-medium rounded-lg flex items-center justify-center gap-1"><Plus size={14} /> Log today</button>
-                  </div>
-                  <div className="flex flex-col">
-                    {workouts.map((w) => (
-                      <div key={w.id} className="flex items-center justify-between py-3 border-b border-neutral-100 last:border-0">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center">
-                            <Dumbbell size={14} className="text-emerald-600" />
-                          </div>
-                          <div>
-                            <p className="text-sm text-neutral-800">{w.type}</p>
-                            <p className="text-xs text-neutral-400">{w.date}</p>
-                          </div>
-                        </div>
-                        <span className="text-sm text-neutral-500">{w.duration}</span>
-                      </div>
-                    ))}
-                  </div>
+                <SectionCard title="Eat to recover" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Nutrition"} onClick={() => askIdeas("Nutrition", JSON.stringify({ currentWeight, targetWeight, nutritionPlan }))} />}>
+                  <div className="mb-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-950"><p className="font-semibold">Your gain plan</p><p className="mt-1 text-amber-900/75">At {currentWeight} kg toward {targetWeight} kg, start with a modest surplus and adjust from your weekly trend, appetite, and clinician or dietitian advice.</p><div className="mt-3 grid grid-cols-3 gap-2"><div><p className="text-[10px] uppercase tracking-[0.12em] text-amber-900/55">Daily surplus</p><p className="mt-1 font-semibold">+{calorieSurplusTarget} kcal</p></div><div><p className="text-[10px] uppercase tracking-[0.12em] text-amber-900/55">Meal plan</p><p className="mt-1 font-semibold">{nutritionTotals.kcal.toLocaleString()} kcal</p></div><div><p className="text-[10px] uppercase tracking-[0.12em] text-amber-900/55">Protein</p><p className="mt-1 font-semibold">{nutritionTotals.protein} g</p></div></div><p className="mt-2 text-xs text-amber-900/70">A practical pace is about {weeklyGainTarget.toFixed(2)} kg/week. The plan is a starting point, not a prescription.</p></div><div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">{nutritionPlan.map((meal) => <div key={meal.slot} className="rounded-2xl bg-neutral-50 p-4"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">{meal.slot}</p><p className="mt-2 text-sm font-medium leading-5 text-neutral-800">{meal.meal}</p><p className="mt-2 text-xs text-neutral-500">{meal.cue}</p></div>)}</div><div className="mt-4 grid grid-cols-1 md:grid-cols-[0.6fr_1.8fr_0.6fr_0.6fr_auto] gap-2"><select value={customMeal.slot} onChange={(e) => setCustomMeal({ ...customMeal, slot: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm"><option>Snack</option><option>Breakfast</option><option>Lunch</option><option>Pre-workout</option><option>Dinner</option><option>Before sleep</option></select><input value={customMeal.meal} onChange={(e) => setCustomMeal({ ...customMeal, meal: e.target.value })} placeholder="Add a meal…" className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input type="number" value={customMeal.kcal} onChange={(e) => setCustomMeal({ ...customMeal, kcal: e.target.value })} placeholder="kcal" className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input type="number" value={customMeal.protein} onChange={(e) => setCustomMeal({ ...customMeal, protein: e.target.value })} placeholder="protein g" className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><button type="button" onClick={addCustomMeal} className="rounded-xl bg-neutral-950 px-3 py-2 text-xs font-semibold text-white">Add meal</button></div><p className="mt-4 text-xs text-neutral-400">Favor balanced meals and protein foods; do not rely on chocolate or sugary drinks as the main weight-gain strategy.</p>
                 </SectionCard>
               </>
             )}
 
             {healthSub === "sleep" && (
               <>
-                <div className="flex flex-col sm:flex-row gap-4 sm:gap-5">
-                  <StatCard icon={Moon} iconColor="blue" label="Average sleep (logged)" value={`${avgSleep}h`} />
-                  <StatCard icon={Moon} iconColor="violet" label="Last night" value={`${sleep[sleep.length - 1]?.hours || 0}h`} />
-                </div>
-                <SectionCard title="Sleep log" right={<div className="flex items-center gap-2"><IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Sleep"} onClick={() => askIdeas("Sleep", JSON.stringify({ sleep }))} />
-                  <div className="flex items-center gap-2">
-                    <input type="number" step="0.5" placeholder="Hours" value={newSleep} onChange={(e) => setNewSleep(e.target.value)} className="w-20 text-sm border border-neutral-200 rounded-lg px-2 py-1.5" />
-                    <button onClick={addSleep} className="px-3 py-1.5 bg-lime-400 text-neutral-950 text-xs font-medium rounded-lg flex items-center gap-1"><Plus size={12} /> Log</button>
-                  </div>
-                </div>}>
-                  <div style={{ height: 200 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={sleep}>
-                        <CartesianGrid stroke="#F5F5F4" vertical={false} />
-                        <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#A3A3A3" }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fontSize: 11, fill: "#A3A3A3" }} axisLine={false} tickLine={false} />
-                        <Tooltip />
-                        <Bar dataKey="hours" fill="#60A5FA" radius={[6, 6, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5"><StatCard icon={Moon} iconColor="blue" label="Average sleep" value={`${avgSleep}h`} delta="Target: 7h+" positive={Number(avgSleep) >= 7} /><StatCard icon={Moon} iconColor="violet" label="Last night" value={`${sleep[sleep.length - 1]?.hours || 0}h`} /><SectionCard title="Recovery signal"><p className="text-sm font-medium text-neutral-800">{Number(avgSleep) >= 7 ? "Your recent average is meeting the adult sleep target." : "Your recent average is below the 7-hour target."}</p><p className="mt-1 text-xs leading-5 text-neutral-500">Track timing and quality for a clearer pattern, not just one night.</p></SectionCard></div>
+                <SectionCard title="Sleep diary" right={<div className="flex items-center gap-2"><IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Sleep"} onClick={() => askIdeas("Sleep", JSON.stringify({ sleep }))} /><button type="button" onClick={() => setShowGlobalVoiceLog(true)} className="dashboard-action rounded-full bg-neutral-950 px-3 py-1.5 text-xs font-semibold text-white">Log by voice</button></div>}>
+                  <div className="mb-5 grid grid-cols-2 md:grid-cols-4 gap-2"><input type="number" step="0.5" placeholder="Hours" value={newSleep} onChange={(e) => setNewSleep(e.target.value)} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input type="time" aria-label="Bedtime" value={newSleepMeta.bedtime} onChange={(e) => setNewSleepMeta({ ...newSleepMeta, bedtime: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><input type="time" aria-label="Wake time" value={newSleepMeta.wake} onChange={(e) => setNewSleepMeta({ ...newSleepMeta, wake: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><button onClick={addSleep} className="dashboard-action rounded-xl bg-lime-300 px-3 py-2 text-xs font-semibold text-neutral-950">Log sleep</button></div>
+                  <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-sm"><thead><tr className="text-left text-xs text-neutral-400"><th className="pb-2 font-medium">Date</th><th className="pb-2 font-medium">Hours</th><th className="pb-2 font-medium">Timing</th><th className="pb-2 font-medium">Quality</th></tr></thead><tbody>{sleep.slice().reverse().map((entry) => <tr key={entry.date} className="border-t border-neutral-100"><td className="py-3 text-neutral-800">{entry.date}</td><td className="py-3 font-medium tabular-nums">{entry.hours}h</td><td className="py-3 text-neutral-500">{entry.bedtime && entry.wake ? `${entry.bedtime} → ${entry.wake}` : "Not logged"}</td><td className="py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${entry.quality === "Good" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{entry.quality || "—"}</span></td></tr>)}</tbody></table></div><p className="mt-4 text-xs text-neutral-400">A sleep diary is most useful when it includes bedtime, awakenings, wake time, naps, exercise, caffeine or alcohol, and medication. Regular sleep problems should be discussed with a healthcare professional.</p>
+                </SectionCard>
+                <SectionCard title="Daily check-ins" right={<span className="text-xs text-neutral-400">Synced to Today</span>}>
+                  <div className="flex flex-wrap gap-2 mb-4">{[["Sleep log", "22:00"], ["Wake-up check-in", "07:00"], ["Weight check", "07:10"], ["Workout check-in", "18:00"]].map(([title, time]) => <button key={title} type="button" onClick={() => addHealthSchedule(title, time)} className="dashboard-action rounded-full bg-neutral-100 px-3 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-200">+ {title} · {time}</button>)}</div>
+                  <div className="grid grid-cols-1 md:grid-cols-[1.3fr_0.9fr_0.5fr_0.7fr_auto] gap-2"><select value={newHealthSchedule.title} onChange={(e) => setNewHealthSchedule({ ...newHealthSchedule, title: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm"><option value="">Choose activity</option><option>Sleep log</option><option>Wake-up check-in</option><option>Weight check</option><option>Workout check-in</option><option value="custom">Custom activity</option></select>{newHealthSchedule.title === "custom" ? <input placeholder="Name the activity" value={customHealthActivity} onChange={(e) => setCustomHealthActivity(e.target.value)} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /> : <div className="hidden md:block" />}<input type="time" value={newHealthSchedule.time} onChange={(e) => setNewHealthSchedule({ ...newHealthSchedule, time: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm" /><select value={newHealthSchedule.cadence} onChange={(e) => setNewHealthSchedule({ ...newHealthSchedule, cadence: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2 text-sm"><option>Daily</option><option>Weekdays</option><option>Weekends</option></select><button type="button" onClick={() => addHealthSchedule(newHealthSchedule.title === "custom" ? customHealthActivity : newHealthSchedule.title, newHealthSchedule.time, newHealthSchedule.cadence)} className="rounded-xl bg-neutral-950 px-3 py-2 text-xs font-semibold text-white">Add</button></div>
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2">{healthSchedules.map((item) => <div key={item.id} className="flex items-center justify-between rounded-xl bg-neutral-50 px-3 py-2.5"><div><p className="text-sm font-medium text-neutral-800">{item.title}</p><p className="text-xs text-neutral-400">{item.time} · {item.cadence}</p></div><button type="button" onClick={() => toggleHealthSchedule(item.id)} className={`rounded-full px-2.5 py-1 text-xs font-medium ${item.enabled ? "bg-lime-100 text-lime-800" : "bg-neutral-200 text-neutral-500"}`}>{item.enabled ? "On" : "Off"}</button></div>)}</div>
                 </SectionCard>
               </>
             )}
 
             {healthSub === "disease" && (
               <>
+                <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-950"><p className="font-semibold">Log what you notice, then decide the next safe step.</p><p className="mt-1 leading-5 text-amber-900/75">Use voice for symptoms, onset, severity, clinic visits, medicines, and follow-up dates. The assistant can organize your record and suggest questions to ask a qualified clinician; it does not diagnose or prescribe.</p></div>
                 <div className="flex flex-col sm:flex-row gap-4 sm:gap-5">
                   <StatCard icon={Pill} iconColor="emerald" label="Medication adherence (this log)" value={`${adherencePct}%`} />
                   <StatCard icon={Calendar} iconColor="blue" label="Next appointment" value={nextAppointment} />
@@ -1630,7 +2020,8 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
                   </div>
                 </SectionCard>
 
-                <SectionCard title="Ask the health assistant" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Health assistant"} onClick={() => askIdeas("Health assistant", JSON.stringify({ diseases, conditionLog }))} />}>
+                {diseaseArchive.length > 0 && <SectionCard title="Archive" right={<span className="rounded-full bg-neutral-100 px-2.5 py-1 text-xs text-neutral-500">{diseaseArchive.length} resolved</span>}><div className="grid grid-cols-1 md:grid-cols-2 gap-2">{diseaseArchive.map((disease) => <div key={disease.id} className="flex items-center justify-between rounded-xl bg-neutral-50 px-3 py-2.5"><div><p className="text-sm text-neutral-700">{disease.name}</p><p className="text-xs text-neutral-400">Resolved {disease.resolvedOn || "—"}</p></div><span className="text-xs font-medium text-emerald-700">Resolved</span></div>)}</div></SectionCard>}
+                <SectionCard title="Ask the health assistant" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Health assistant"} onClick={() => askIdeas("Health assistant", JSON.stringify({ diseases, diseaseArchive, conditionLog }))} />}>
                   <div className="flex flex-col gap-2 max-h-72 overflow-y-auto mb-4">
                     {aiMessages.map((m, i) => (
                       <div key={i} className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${m.role === "user" ? "self-end bg-neutral-950 text-white" : "self-start bg-lime-50 text-lime-900"}`}>
@@ -1657,7 +2048,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
                   <p className="text-xs text-neutral-400 mt-2">General habit suggestions only — not a substitute for medical advice.</p>
                 </SectionCard>
 
-                <SectionCard title="Condition log" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Condition log"} onClick={() => askIdeas("Condition log", JSON.stringify({ conditionLog, diseases }))} />}>
+                <SectionCard title="Condition log" right={<div className="flex items-center gap-2"><IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Condition log"} onClick={() => askIdeas("Condition log", JSON.stringify({ conditionLog, diseases }))} /><button type="button" onClick={() => setShowGlobalVoiceLog(true)} className="dashboard-action rounded-full bg-neutral-950 px-3 py-1.5 text-xs font-semibold text-white">Log by voice</button></div>}>
                   <div className="flex flex-col sm:flex-row gap-2 mb-4">
                     <div className="flex-1"><VoiceNoteBox onSubmit={(value) => setNewCondition({ ...newCondition, note: value })} placeholder="Record how you are feeling today, or type it here…" /></div>
                     <label className="flex items-center gap-2 text-sm text-neutral-600 px-2">
@@ -2048,6 +2439,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
             syllabusEvents={syllabusEvents}
             projects={projects}
             people={people}
+            healthSchedules={healthSchedules}
             onIdeas={askIdeas}
           />
         )}
@@ -2096,7 +2488,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
             </SectionCard>
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 }

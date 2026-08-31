@@ -8,22 +8,19 @@ import "./index.css";
 
 const queryClient = new QueryClient();
 
-const reportUnauthorized = (error: unknown) => {
-  if (!(error instanceof TRPCClientError)) return;
-  if (error.data?.code === "UNAUTHORIZED") console.warn("[Auth] Sign-in required");
+const logApiError = (error: unknown) => {
+  if (error instanceof TRPCClientError) console.error("[API Error]", error);
 };
 
-queryClient.getQueryCache().subscribe((event) => {
+queryClient.getQueryCache().subscribe(event => {
   if (event.type === "updated" && event.action.type === "error") {
-    reportUnauthorized(event.query.state.error);
-    console.error("[API Query Error]", event.query.state.error);
+    logApiError(event.query.state.error);
   }
 });
 
-queryClient.getMutationCache().subscribe((event) => {
+queryClient.getMutationCache().subscribe(event => {
   if (event.type === "updated" && event.action.type === "error") {
-    reportUnauthorized(event.mutation.state.error);
-    console.error("[API Mutation Error]", event.mutation.state.error);
+    logApiError(event.mutation.state.error);
   }
 });
 
@@ -32,6 +29,7 @@ const trpcClient = trpc.createClient({
     httpBatchLink({
       url: "/api/trpc",
       transformer: superjson,
+      headers: () => ({}),
       fetch(input, init) {
         return globalThis.fetch(input, {
           ...(init ?? {}),

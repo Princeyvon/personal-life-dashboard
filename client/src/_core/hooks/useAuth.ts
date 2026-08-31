@@ -1,6 +1,6 @@
 import { trpc } from "@/lib/trpc";
 import { TRPCClientError } from "@trpc/client";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 type UseAuthOptions = {
   redirectOnUnauthenticated?: boolean;
@@ -9,16 +9,12 @@ type UseAuthOptions = {
 
 export function useAuth(_options?: UseAuthOptions) {
   const utils = trpc.useUtils();
+  const [pinLoginLoading, setPinLoginLoading] = useState(false);
+  const [pinLoginError, setPinLoginError] = useState<string | null>(null);
 
   const meQuery = trpc.auth.me.useQuery(undefined, {
     retry: false,
     refetchOnWindowFocus: false,
-  });
-
-  const loginMutation = trpc.auth.pinLogin.useMutation({
-    onSuccess: (result) => {
-      utils.auth.me.setData(undefined, result.user);
-    },
   });
 
   const logoutMutation = trpc.auth.logout.useMutation({
@@ -27,36 +23,77 @@ export function useAuth(_options?: UseAuthOptions) {
     },
   });
 
-  const login = useCallback(async (pin: string) => {
-    await loginMutation.mutateAsync({ pin });
-    await utils.auth.me.invalidate();
-  }, [loginMutation, utils]);
+  const loginWithPin = useCallback(async (pin: string) => {
+    setPinLoginLoading(true);
+    setPinLoginError(null);
+    try {
+      const response = await fetch("/api/auth/pin", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ pin }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(typeof payload.error === "string" ? payload.error : "The dashboard could not be unlocked. Please try again.");
+      }
+      await utils.auth.me.invalidate();
+    } catch (error) {
+      setPinLoginError(error instanceof Error ? error.message : "The dashboard could not be unlocked. Please try again.");
+      throw error;
+    } finally {
+      setPinLoginLoading(false);
+    }
+  }, [utils]);
 
   const logout = useCallback(async () => {
     try {
       await logoutMutation.mutateAsync();
     } catch (error: unknown) {
-      if (error instanceof TRPCClientError && error.data?.code === "UNAUTHORIZED") return;
+      if (
+        error instanceof TRPCClientError &&
+        error.data?.code === "UNAUTHORIZED"
+      ) {
+        return;
+      }
       throw error;
     } finally {
+      try {
+        sessionStorage.removeItem("manus-cookie");
+      } catch {}
       utils.auth.me.setData(undefined, null);
       await utils.auth.me.invalidate();
     }
   }, [logoutMutation, utils]);
 
-  return useMemo(() => {
-    const user = meQuery.data ?? null;
+  const state = useMemo(() => {
     try {
-      localStorage.setItem("life-dashboard-user-info", JSON.stringify(user));
+      localStorage.setItem(
+        "manus-runtime-user-info",
+        JSON.stringify(meQuery.data)
+      );
     } catch {}
     return {
-      user,
-      loading: meQuery.isLoading || loginMutation.isPending || logoutMutation.isPending,
-      error: meQuery.error ?? loginMutation.error ?? logoutMutation.error ?? null,
-      isAuthenticated: Boolean(user),
-      login,
-      refresh: () => meQuery.refetch(),
-      logout,
+      user: meQuery.data ?? null,
+      loading: meQuery.isLoading || logoutMutation.isPending || pinLoginLoading,
+      error: meQuery.error ?? logoutMutation.error ?? null,
+      isAuthenticated: Boolean(meQuery.data),
     };
-  }, [login, loginMutation.error, loginMutation.isPending, logout, logoutMutation.error, logoutMutation.isPending, meQuery.data, meQuery.error, meQuery.isLoading, meQuery.refetch]);
+  }, [
+    meQuery.data,
+    meQuery.error,
+    meQuery.isLoading,
+    logoutMutation.error,
+    logoutMutation.isPending,
+    pinLoginLoading,
+  ]);
+
+  return {
+    ...state,
+    refresh: () => meQuery.refetch(),
+    logout,
+    loginWithPin,
+    pinLoginLoading,
+    pinLoginError,
+  };
 }
