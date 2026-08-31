@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertUser, users, dashboardSnapshots } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -77,6 +77,13 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   }
 }
 
+export async function getUserById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
   if (!db) {
@@ -89,4 +96,20 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+export async function getDashboardSnapshot(userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(dashboardSnapshots).where(eq(dashboardSnapshots.userId, userId)).limit(1);
+  return result[0];
+}
+
+export async function saveDashboardSnapshot(userId: number, snapshot: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const existing = await getDashboardSnapshot(userId);
+  if (existing) {
+    await db.update(dashboardSnapshots).set({ snapshot, updatedAt: new Date() }).where(eq(dashboardSnapshots.userId, userId));
+  } else {
+    await db.insert(dashboardSnapshots).values({ userId, snapshot });
+  }
+}

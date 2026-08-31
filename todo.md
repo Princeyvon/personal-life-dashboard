@@ -1,0 +1,51 @@
+# Project TODO
+
+- [x] Migrate the source repository’s React, Express, and tRPC application into the managed full-stack project.
+- [x] Preserve dashboard, finance, projects, reminders, Daily Rewind, and PIN-access workflows.
+- [x] Preserve authenticated access and connect all user data to durable database-backed storage.
+- [x] Configure production build and start behavior using the managed runtime PORT.
+- [x] Add a production health endpoint and document health validation.
+- [x] Document required environment variables and deployment configuration.
+- [x] Make Google Calendar and other third-party integrations fail safely when credentials are unavailable.
+- [x] Add clear Google Calendar setup guidance.
+- [x] Connect coaching to a server-side LLM with context-aware planning and reflection prompts.
+- [x] Enable durable S3-backed uploads for documents, images, and audio attachments without storing file bytes in the database.
+- [x] Polish the visual design with an elegant, cohesive responsive experience while preserving workflows.
+- [x] Add or update Vitest coverage for migrated and production-critical behavior.
+- [x] Run type checks, tests, production build, health checks, and visual verification.
+- [ ] Save the completed project checkpoint and provide deployment guidance.
+- [x] Audit the existing dashboard UI at desktop, tablet, and mobile widths without changing the core information architecture.
+- [x] Improve mobile screen fit, overflow handling, touch targets, and responsive navigation across all existing pages.
+- [x] Review and correct text/background contrast, focus states, form readability, and dark/light surface pairings.
+- [x] Apply restrained high-end interaction polish with reduced-motion support while preserving the current frontend direction.
+- [x] Re-run visual screenshots, type checks, tests, and production build after the responsive polish pass.
+- [x] Synchronize the managed database with the migrated dashboard schema so authenticated workspace and Daily Rewind queries do not fail in production preview.
+- [x] Remove nested interactive buttons in CalendarWorkspace so calendar cells and event pills remain valid, keyboard-accessible DOM.
+- [x] Fix the Work workspace runtime error caused by the undefined `unfinishedTodos` reference.
+- [x] Verify and document the migrated PIN-access workflow with code evidence and tests.
+- [x] Verify safe-failure handling coverage for credential-dependent integrations beyond Google Calendar, or narrow the documentation claim.
+- [x] Verify server-side coaching/advice handlers call the LLM with context and return safe fallbacks.
+- [x] Verify dashboard upload integration persists S3 metadata without storing file bytes in the database.
+- [x] Replace Manus OAuth gating with a standalone server-backed PIN gate for the whole dashboard.
+- [x] Store the supplied PIN through the project secret configuration and never hardcode it in client code.
+- [x] Add accessible PIN login, error, loading, logout, and session-expiry states with mobile-first screen fit.
+- [x] Apply Apple-style, high-end visual treatment and reduced-motion behavior without changing the dashboard’s overall frontend structure.
+- [x] Add Vitest coverage for PIN verification, session handling, and invalid-input behavior.
+- [x] Update deployment documentation to describe standalone PIN access and the required secret.
+- [x] Add an explicit Lock dashboard action to the active Home top bar so PIN sessions can be ended without waiting for expiry.
+- [x] Audit the recording feature from microphone permission through capture, playback, transcription, upload, persistence, and UI recovery.
+- [x] Make recording controls resilient across mobile and desktop browsers, including supported formats, cancellation, retry, and permission-denied states.
+- [x] Ensure recorded audio is uploaded durably through the authenticated S3 path and does not store bytes in the database.
+- [x] Add deterministic tests for recording-related validation, upload behavior, and safe failures.
+- [x] Verify the recording flow visually and through runtime checks at mobile and desktop widths.
+- [x] Add an explicit cancel/discard/reset action for recorded audio previews and verify retry behavior after failed upload or transcription.
+- [x] Add deterministic tests for successful and failed audio uploads and transcription error mapping.
+- [x] Verify the recording UI at desktop width and document the result; successful microphone capture still requires a browser/device with permission enabled.
+- [x] Add route-level Vitest coverage for authenticated audio-upload success, invalid MIME/base64 rejection, and storage failure handling.
+- [x] Exercise and document retry behavior after a simulated upload or transcription failure, without requiring a real microphone.
+- [x] Verify the recording panel itself at desktop width with the voice UI open and document the desktop-specific result.
+- [x] Add a route-level invalid-MIME rejection test for authenticated audio upload requests.
+- [x] Exercise and document UI retry behavior after simulated upload failure and simulated transcription failure.
+- [ ] Exercise the Voice log UI with a simulated `/api/uploads` failure and confirm the transcript/audio draft remains available for retry or discard.
+- [ ] Exercise the Voice log UI with a simulated transcription failure after a successful upload and confirm retry/discard behavior.
+- [ ] Add component or integration tests for VoiceNoteBox upload-failure and transcription-failure draft preservation.
