@@ -63,13 +63,13 @@ export async function handleDashboardPinRequest(req: Request, res: Response) {
   }
 
   const address = normalizeAddress(req);
-  if (!canAttempt(address)) {
-    return sendPinError(res, 429, "Too many attempts. Please wait a few minutes and try again.");
-  }
-
   if (!verifyDashboardPin(req.body?.pin)) {
+    if (!canAttempt(address)) {
+      return sendPinError(res, 429, "Too many attempts. Please wait a few minutes and try again.");
+    }
     return sendPinError(res, 401, "That PIN didn’t unlock the dashboard. Check it and try again.");
   }
+  attemptsByAddress.delete(address);
 
   try {
     const token = await createDashboardPinSession();

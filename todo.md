@@ -49,4 +49,11 @@
 - [ ] Exercise the Voice log UI with a simulated `/api/uploads` failure and confirm the transcript/audio draft remains available for retry or discard.
 - [ ] Exercise the Voice log UI with a simulated transcription failure after a successful upload and confirm retry/discard behavior.
 - [ ] Add component or integration tests for VoiceNoteBox upload-failure and transcription-failure draft preservation.
-- [ ] Commit and push the current managed-project changes to Princeyvon/personal-life-dashboard and verify the remote branch is synchronized.
+- [x] Commit and push the current managed-project changes to Princeyvon/personal-life-dashboard and verify the remote branch is synchronized.
+- [x] Diagnose and fix the PIN login flow so a valid PIN creates a usable authenticated dashboard session.
+- [x] Hide the PIN gate’s welcome/brand panel on mobile screens while preserving the desktop split layout.
+- [x] Add regression coverage for successful PIN login/session hydration and the mobile-only panel behavior.
+- [x] Re-run type checks, tests, build, and browser verification, then push the fix to GitHub.
+- [x] Add automated coverage for the mobile-only PIN gate layout and client-side post-login session hydration behavior.
+- [x] Run the production build after the PIN/mobile fixes and verify it passes.
+- [ ] Commit and push the PIN/mobile fix commit to GitHub and confirm remote main is synchronized.
