@@ -13,7 +13,7 @@
 - [x] Polish the visual design with an elegant, cohesive responsive experience while preserving workflows.
 - [x] Add or update Vitest coverage for migrated and production-critical behavior.
 - [x] Run type checks, tests, production build, health checks, and visual verification.
-- [ ] Save the completed project checkpoint and provide deployment guidance.
+- [x] Save the completed project checkpoint and provide deployment guidance.
 - [x] Audit the existing dashboard UI at desktop, tablet, and mobile widths without changing the core information architecture.
 - [x] Improve mobile screen fit, overflow handling, touch targets, and responsive navigation across all existing pages.
 - [x] Review and correct text/background contrast, focus states, form readability, and dark/light surface pairings.
@@ -59,7 +59,7 @@
 - [x] Commit and push the PIN/mobile fix commit to GitHub and confirm remote main is synchronized.
 - [x] Diagnose why the live production dashboard does not open after a valid PIN; the initial live check found no active deployment, and the post-deployment unlock now succeeds.
 - [x] Publish the active production deployment after the initial no-deployment result; the published dashboard was re-unlocked with PIN 3030 and loaded the workspace without a session-code change.
-- [ ] Verify the live PIN unlock flow, run regression checks, checkpoint, and push the production fix.
+- [x] Verify the live PIN unlock flow, run regression checks, checkpoint, and push the production fix.
 - [x] Add Georgetown semester class and recurring availability schedule from the user-provided weekly windows.
 - [x] Verify the live Georgetown workspace renders both classes and the Sunday–Thursday availability windows.
 - [x] Publish and verify the latest Georgetown UI build so Weekly availability is visible to users.
