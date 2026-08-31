@@ -25,6 +25,14 @@ const domainMeta = {
   calendar: { label: "Calendar", icon: Calendar, color: "lime" },
 };
 
+const georgetownAvailabilityDefaults = [
+  { day: "Sunday", window: "After 6:30 PM", detail: "Following Behavioral Economics and Bank Runs, Crises, and Policy Responses." },
+  { day: "Monday", window: "8:00–10:00 AM · 11:15 AM–2:30 PM · after 5:15 PM", detail: "" },
+  { day: "Tuesday", window: "8:00 AM–2:30 PM · after 3:45 PM", detail: "" },
+  { day: "Wednesday", window: "8:00–10:00 AM · 11:15 AM–2:30 PM · after 5:15 PM", detail: "" },
+  { day: "Thursday", window: "Fully available all day", detail: "" },
+];
+
 const colorMap = {
   emerald: { badgeBg: "bg-emerald-50", badgeText: "text-emerald-600", dot: "bg-emerald-400", ring: "#34D399", solid: "bg-emerald-400" },
   blue: { badgeBg: "bg-blue-50", badgeText: "text-blue-600", dot: "bg-blue-400", ring: "#60A5FA", solid: "bg-blue-400" },
@@ -1057,8 +1065,9 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
     setNewReading({ title: "", course: "" });
   }
 
-  // School — Georgetown: classes & syllabus
+  // School — Georgetown: classes, semester availability & syllabus
   const [classes, setClasses] = useState([]);
+  const [georgetownAvailability, setGeorgetownAvailability] = useState(georgetownAvailabilityDefaults);
   const [newClass, setNewClass] = useState({ name: "", professor: "", schedule: "" });
   function addClass() {
     if (!newClass.name) return;
@@ -1417,6 +1426,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
       if (saved.assignments) setAssignments(saved.assignments);
       if (saved.readings) setReadings(saved.readings);
       if (saved.classes) setClasses(saved.classes);
+      if (saved.georgetownAvailability) setGeorgetownAvailability(saved.georgetownAvailability);
       if (saved.syllabusEvents) setSyllabusEvents(saved.syllabusEvents);
       if (saved.applications) setApplications(saved.applications);
       if (saved.recommenders) setRecommenders(saved.recommenders);
@@ -1429,10 +1439,10 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
 
   useEffect(() => {
     if (!isAuthenticated || !snapshotReady) return;
-    const payload = { todos, income, debts, weight, workouts, fitnessPlan, fitnessDayIndex, liftLog, nutritionPlan, sleep, conditionLog, diseases, diseaseArchive, healthSchedules, projects, assignments, readings, classes, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan };
+    const payload = { todos, income, debts, weight, workouts, fitnessPlan, fitnessDayIndex, liftLog, nutritionPlan, sleep, conditionLog, diseases, diseaseArchive, healthSchedules, projects, assignments, readings, classes, georgetownAvailability, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan };
     const timer = window.setTimeout(() => saveSnapshot.mutate(payload), 500);
     return () => window.clearTimeout(timer);
-  }, [isAuthenticated, snapshotReady, todos, income, debts, weight, workouts, fitnessPlan, fitnessDayIndex, liftLog, nutritionPlan, sleep, conditionLog, diseases, diseaseArchive, healthSchedules, projects, assignments, readings, classes, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan]);
+  }, [isAuthenticated, snapshotReady, todos, income, debts, weight, workouts, fitnessPlan, fitnessDayIndex, liftLog, nutritionPlan, sleep, conditionLog, diseases, diseaseArchive, healthSchedules, projects, assignments, readings, classes, georgetownAvailability, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan]);
 
   if (authLoading || (isAuthenticated && snapshotQuery.isLoading)) {
     return <div className="min-h-screen bg-neutral-100 flex items-center justify-center text-sm text-neutral-500">Loading your workspace…</div>;
@@ -2194,6 +2204,21 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
                     <input placeholder="Professor" value={newClass.professor} onChange={(e) => setNewClass({ ...newClass, professor: e.target.value })} className="text-sm border border-neutral-200 rounded-lg px-3 py-2" />
                     <input placeholder="Schedule (e.g. Mon/Wed 10am)" value={newClass.schedule} onChange={(e) => setNewClass({ ...newClass, schedule: e.target.value })} className="text-sm border border-neutral-200 rounded-lg px-3 py-2" />
                     <button onClick={addClass} className="px-4 py-2 bg-lime-400 text-neutral-950 text-sm font-medium rounded-lg flex items-center justify-center gap-1"><Plus size={14} /> Add class</button>
+                  </div>
+                </SectionCard>
+
+                <SectionCard title="Weekly availability" right={<span className="text-[11px] font-medium uppercase tracking-[0.12em] text-neutral-400">This semester</span>}>
+                  <p className="mb-4 text-sm leading-6 text-neutral-500">Your Georgetown availability windows are kept here as a weekly reference. Friday and Saturday were not specified.</p>
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                    {georgetownAvailability.map((item) => (
+                      <div key={item.day} className="flex flex-col gap-1 rounded-xl bg-neutral-50 px-3 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                        <span className="text-sm font-medium text-neutral-800">{item.day}</span>
+                        <div className="text-left sm:max-w-[75%] sm:text-right">
+                          <p className="text-sm text-neutral-600">{item.window}</p>
+                          {item.detail && <p className="mt-1 text-xs leading-5 text-neutral-400">{item.detail}</p>}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </SectionCard>
 

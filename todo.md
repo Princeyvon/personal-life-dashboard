@@ -56,4 +56,12 @@
 - [x] Re-run type checks, tests, build, and browser verification, then push the fix to GitHub.
 - [x] Add automated coverage for the mobile-only PIN gate layout and client-side post-login session hydration behavior.
 - [x] Run the production build after the PIN/mobile fixes and verify it passes.
-- [ ] Commit and push the PIN/mobile fix commit to GitHub and confirm remote main is synchronized.
+- [x] Commit and push the PIN/mobile fix commit to GitHub and confirm remote main is synchronized.
+- [ ] Diagnose why the live production dashboard does not open after a valid PIN.
+- [ ] Fix the live production PIN session/cookie or post-login hydration behavior.
+- [ ] Verify the live PIN unlock flow, run regression checks, checkpoint, and push the production fix.
+- [x] Add Georgetown semester class and recurring availability schedule from the user-provided weekly windows.
+- [ ] Verify the Georgetown workspace and calendar render the new schedule correctly.
+- [ ] Publish and verify the latest Georgetown UI build so Weekly availability is visible to users.
+- [ ] Add corresponding local calendar records if the semester schedule is intended to be calendar-backed.
+- [ ] Re-check the live Georgetown workspace after deployment and confirm both classes and weekly availability render correctly.
