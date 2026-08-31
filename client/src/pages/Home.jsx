@@ -192,7 +192,7 @@ function voiceExtension(contentType) {
   return "webm";
 }
 
-function VoiceNoteBox({ onSubmit, loading, placeholder }) {
+export function VoiceNoteBox({ onSubmit, loading, placeholder }) {
   const [text, setText] = useState("");
   const [recording, setRecording] = useState(false);
   const [supported, setSupported] = useState(true);

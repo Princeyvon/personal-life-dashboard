@@ -46,9 +46,9 @@
 - [x] Verify the recording panel itself at desktop width with the voice UI open and document the desktop-specific result.
 - [x] Add a route-level invalid-MIME rejection test for authenticated audio upload requests.
 - [x] Exercise and document UI retry behavior after simulated upload failure and simulated transcription failure.
-- [ ] Exercise the Voice log UI with a simulated `/api/uploads` failure and confirm the transcript/audio draft remains available for retry or discard.
-- [ ] Exercise the Voice log UI with a simulated transcription failure after a successful upload and confirm retry/discard behavior.
-- [ ] Add component or integration tests for VoiceNoteBox upload-failure and transcription-failure draft preservation.
+- [x] Exercise the Voice log UI with a simulated `/api/uploads` failure and confirm the transcript/audio draft remains available for retry or discard.
+- [x] Exercise the Voice log UI with a simulated transcription failure after a successful upload and confirm retry/discard behavior.
+- [x] Add component or integration tests for VoiceNoteBox upload-failure and transcription-failure draft preservation.
 - [x] Commit and push the current managed-project changes to Princeyvon/personal-life-dashboard and verify the remote branch is synchronized.
 - [x] Diagnose and fix the PIN login flow so a valid PIN creates a usable authenticated dashboard session.
 - [x] Hide the PIN gate’s welcome/brand panel on mobile screens while preserving the desktop split layout.
@@ -57,11 +57,11 @@
 - [x] Add automated coverage for the mobile-only PIN gate layout and client-side post-login session hydration behavior.
 - [x] Run the production build after the PIN/mobile fixes and verify it passes.
 - [x] Commit and push the PIN/mobile fix commit to GitHub and confirm remote main is synchronized.
-- [ ] Diagnose why the live production dashboard does not open after a valid PIN.
-- [ ] Fix the live production PIN session/cookie or post-login hydration behavior.
+- [x] Diagnose why the live production dashboard does not open after a valid PIN; the initial live check found no active deployment, and the post-deployment unlock now succeeds.
+- [x] Publish the active production deployment after the initial no-deployment result; the published dashboard was re-unlocked with PIN 3030 and loaded the workspace without a session-code change.
 - [ ] Verify the live PIN unlock flow, run regression checks, checkpoint, and push the production fix.
 - [x] Add Georgetown semester class and recurring availability schedule from the user-provided weekly windows.
-- [ ] Verify the Georgetown workspace and calendar render the new schedule correctly.
-- [ ] Publish and verify the latest Georgetown UI build so Weekly availability is visible to users.
-- [ ] Add corresponding local calendar records if the semester schedule is intended to be calendar-backed.
-- [ ] Re-check the live Georgetown workspace after deployment and confirm both classes and weekly availability render correctly.
+- [x] Verify the live Georgetown workspace renders both classes and the Sunday–Thursday availability windows.
+- [x] Publish and verify the latest Georgetown UI build so Weekly availability is visible to users.
+- [x] Do not create date-specific local calendar records yet; the user provided weekly availability but no semester start/end dates or timezone, so the schedule is persisted in the Georgetown workspace instead.
+- [x] Re-check the live Georgetown workspace after deployment and confirm both classes and weekly availability render correctly.
