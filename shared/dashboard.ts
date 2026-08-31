@@ -15,6 +15,7 @@ export const dashboardSnapshotSchema = z.object({
   weight: z.array(legacyItem), workouts: z.array(legacyItem), sleep: z.array(legacyItem),
   conditionLog: z.array(legacyItem), diseases: z.array(legacyItem), projects: z.array(legacyItem),
   assignments: z.array(legacyItem), readings: z.array(legacyItem), classes: z.array(legacyItem),
+  courseItems: z.array(legacyItem).optional(), coursePerformance: z.array(legacyItem).optional(),
   syllabusEvents: z.array(legacyItem), applications: z.array(legacyItem), recommenders: z.array(legacyItem), georgetownAvailability: z.array(legacyItem).optional(),
   people: z.array(person), voiceLog: z.array(legacyItem),
   routines: z.array(routine).optional(), tasks: z.array(task).optional(), goals: z.array(goal).optional(), notes: z.array(note).optional(), todayPlan: z.record(z.string(), z.array(legacyItem)).optional(), fitnessPlan: z.array(legacyItem).optional(), fitnessDayIndex: z.number().int().nonnegative().optional(), liftLog: z.array(legacyItem).optional(), diseaseArchive: z.array(legacyItem).optional(), healthSchedules: z.array(legacyItem).optional(),

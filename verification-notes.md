@@ -9,3 +9,11 @@ Cross-page preview checkpoint: Finance now shows the new floating rail, warm-whi
 The local preview was restarted with `DASHBOARD_FREE_ACCESS=true`, `DASHBOARD_PIN=3030`, and a test-only JWT secret. The dashboard opened directly at the home workspace without showing the PIN gate. A narrow 390×844 Chromium screenshot confirmed the mobile-only dock and voice launcher are present, with the active home indicator rendered as a charcoal raised orb with a warm-paper keyline and mint signal, and the dock shelf aligned to the bottom safe-area treatment. The local preview displayed the expected runtime warning toast because no local database is configured; this does not block the free-access render.
 
 `pnpm check` passed. With test-only shell secrets supplied for the existing PIN regression suite, `pnpm test` passed with 42 tests passing and 1 intentionally skipped, and `pnpm build` passed. The production build still emits existing analytics-placeholder and chunk-size warnings.
+
+## Georgetown course calendar verification — 2026-08-31
+
+The live calendar view now derives recurring Georgetown class meetings from the course catalog. August 23 shows Intro to Behavioral Economics at 2:30 PM and Bank Runs, Crises, Pol. Responses at 4:00 PM; August 24 shows Research Project Design (Intl Econ) at 10:00 AM; August 26 shows Islamic World History at 2:30 PM; and August 26 also shows Economic Development at 4:00 PM. The same pattern continues weekly through the configured semester end date of December 14, 2026. Room labels are available on each event detail.
+
+## Georgetown workspace UI verification — 2026-08-31
+
+The live School workspace renders all five requested course cards with the exact meeting patterns, times, and rooms. The selected-course panel shows the Academic follow-ups and Performance areas with accessible empty states and forms for adding assignments, quizzes, exams, study sessions, readings, follow-ups, grades, scores, dates, and notes. The course cards use a dark selected state, violet course signal, lime accent, and responsive two-column-to-single-column layout. The school nudge count now includes open Georgetown course follow-ups.
