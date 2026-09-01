@@ -3,7 +3,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import CalendarWorkspace from "@/components/CalendarWorkspace";
 import PinGate from "@/components/PinGate";
-import { applyIncomeReceipt, addIncomeExpected, applyDebtPayment, addDebtPrincipal, appendVoiceNote, buildFinanceInsights, applyVoiceActionToState, filterTodosForProject } from "@shared/interactionHelpers";
+import { applyIncomeReceipt, addIncomeExpected, applyDebtPayment, addDebtPrincipal, appendVoiceNote, buildFinanceInsights, applyVoiceActionToState, filterTodosForProject, calculateCompletionPercent, buildTodayCardItems, getDebtActionMeta } from "@shared/interactionHelpers";
 import { addRelationshipGoal, editRelationshipGoal, toggleRelationshipGoal, deleteRelationshipGoal } from "@shared/relationshipHelpers";
 import {
   Home, HeartPulse, Wallet, Briefcase, GraduationCap, Users, Bell,
@@ -585,8 +585,9 @@ export default function PersonalLifeOS() {
     { key: "classes", label: "Classes", domain: "school", icon: BookOpen, color: "violet", defaultText: "Stay on top of classwork" },
     { key: "masters", label: "Masters", domain: "school", icon: GraduationCap, color: "blue", defaultText: "Move one application task forward" },
     { key: "work", label: "Work", domain: "work", icon: Briefcase, color: "amber", defaultText: "Make progress on your priority project" },
-    { key: "money", label: "Money", domain: "finance", icon: Wallet, color: "blue", defaultText: "Review today's money priorities" },
-    { key: "relationships", label: "People", domain: "relationships", icon: Users, color: "rose", defaultText: "Reach out to someone important" },
+    { key: "finance", label: "Finance", domain: "finance", icon: Wallet, color: "blue", defaultText: "Review today's money priorities" },
+    { key: "relationships", label: "Relationships", domain: "relationships", icon: Users, color: "rose", defaultText: "Reach out to someone important" },
+    { key: "health", label: "Health", domain: "health", icon: HeartPulse, color: "emerald", defaultText: "Log one health check-in" },
   ];
   const [todayPlan, setTodayPlan] = useState({});
   const [todayDraft, setTodayDraft] = useState({});
@@ -1133,16 +1134,16 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
       classes: [...todayLinkedTodos("school", (todo) => !/application|masters|recommend/i.test(todo.text)), ...assignments.filter((item) => item.due === today && item.status !== "Graded").map((item) => ({ id: `assignment-${item.id}`, text: `${item.title}${item.course ? ` · ${item.course}` : ""}`, done: item.status === "Submitted" || item.status === "Graded", source: "assignment" }))],
       masters: [...todayLinkedTodos("school", (todo) => /application|masters|recommend/i.test(todo.text)), ...applications.filter((item) => item.deadline === today && item.status !== "Received").map((item) => ({ id: `application-${item.id}`, text: `Application · ${item.school}`, done: item.status === "Submitted" || item.status === "Received", source: "application" }))],
       work: todayLinkedTodos("work"),
-      money: todayLinkedTodos("finance"),
+      finance: todayLinkedTodos("finance"),
       relationships: todayLinkedTodos("relationships"),
+      health: [
+        ...todayLinkedTodos("health", (todo) => !/gym|workout|exercise|run|lift|food|meal|eat|water|hydrate|nutrition/i.test(todo.text)),
+        ...sleep.filter((entry) => entry.date === today).map((entry) => ({ id: `sleep-${entry.date}`, text: `Sleep log · ${entry.hours}h`, done: true, source: "sleep" })),
+        ...conditionLog.filter((entry) => entry.date === today).map((entry) => ({ id: `condition-${entry.id}`, text: `Health check-in · ${entry.note}`, done: true, source: "condition" })),
+      ],
     };
-    return todayCategories.reduce((result, category) => {
-      const custom = todayPlan[category.key] || [];
-      const items = [...sources[category.key], ...custom].filter((item, index, list) => list.findIndex((candidate) => String(candidate.id) === String(item.id)) === index);
-      result[category.key] = items.length ? items : [{ id: `${category.key}-default`, text: category.defaultText, done: false, source: "plan" }];
-      return result;
-    }, {});
-  }, [todayPlan, todayTodos, workouts, assignments, applications, currentFitnessDay, nutritionPlan, healthSchedules]);
+    return buildTodayCardItems(todayCategories, sources, todayPlan);
+  }, [todayPlan, todayTodos, workouts, assignments, applications, currentFitnessDay, nutritionPlan, healthSchedules, sleep, conditionLog]);
   function toggleTodayItem(categoryKey, item) {
     if (item.source === "todo") return toggleTodo(item.id);
     if (item.source === "assignment") return cycleAssignmentStatus(String(item.id).replace("assignment-", ""));
@@ -1163,10 +1164,7 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
     setTodayPlan((prev) => ({ ...prev, [categoryKey]: [...(prev[categoryKey] || []), { id: `plan-${Date.now()}`, text, done: false, source: "plan" }] }));
     setTodayDraft((prev) => ({ ...prev, [categoryKey]: "" }));
   }
-  const todayOverall = Math.round(todayCategories.reduce((sum, category) => {
-    const items = todayCardItems[category.key] || [];
-    return sum + (items.length ? items.filter((item) => item.done).length / items.length * 100 : 0);
-  }, 0) / todayCategories.length);
+  const todayOverall = Math.round(todayCategories.reduce((sum, category) => sum + calculateCompletionPercent(todayCardItems[category.key] || []), 0) / todayCategories.length);
 
   // Relationships
   const [relationshipsSub, setRelationshipsSub] = useState("Family");
@@ -1573,7 +1571,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
                     const c = colorMap[category.color];
                     const items = todayCardItems[category.key] || [];
                     const completed = items.filter((item) => item.done).length;
-                    const progress = Math.round((completed / Math.max(items.length, 1)) * 100);
+                    const progress = calculateCompletionPercent(items);
                     return (
                       <div key={category.key} className="bg-white rounded-2xl p-5 flex flex-col gap-4 shadow-sm">
                         <div className="flex items-start justify-between gap-3">
@@ -1643,7 +1641,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
                         const items = todayCardItems[category.key] || [];
                         const firstItem = items[0] || { text: category.defaultText, done: false };
                         const completed = items.filter((item) => item.done).length;
-                        const progress = Math.round((completed / Math.max(items.length, 1)) * 100);
+                        const progress = calculateCompletionPercent(items);
                         return (
                           <div key={category.key} className="reference-task-row">
                             <div className="reference-task-icon"><Icon size={18} /></div>
@@ -1873,7 +1871,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
                           <td className="py-3 text-neutral-800"><div className="font-medium">{d.name}</div><div className="text-[11px] text-neutral-400 mt-1">Added {d.date}</div></td>
                           <td className="py-3 text-neutral-600">{fmt(d.debt)}</td>
                           <td className="py-3 text-neutral-600">{fmt(d.paid)}</td>
-                          <td className="py-3 text-neutral-600">{fmt(d.balance)}</td>
+                          <td className="py-3"><div className="font-semibold tabular-nums text-neutral-900">{fmt(d.balance)}</div><div className="mt-1 text-[11px] text-neutral-400">remaining</div></td>
                           <td className="py-3 text-neutral-500">{d.date}</td>
                           <td className="py-3">
                             <button type="button" onClick={() => setDebts(prev => prev.map(x => x.id !== d.id ? x : { ...x, status: x.status === "Active" ? "Paid" : "Active" }))} aria-label={`Mark ${d.name} as ${d.status === "Active" ? "paid" : "active"}`}>
@@ -1882,14 +1880,17 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
                           </td>
                           <td className="py-3">
                             <div className="flex justify-end gap-2">
-                              <button type="button" onClick={() => setDebtAction({ id: d.id, type: "pay", amount: "" })} className="rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100">Pay</button>
-                              <button type="button" onClick={() => setDebtAction({ id: d.id, type: "add", amount: "" })} className="rounded-lg bg-rose-50 px-2.5 py-1.5 text-[11px] font-medium text-rose-700 hover:bg-rose-100">Add on</button>
+                              <button type="button" onClick={() => setDebtAction({ id: d.id, type: "pay", amount: "" })} aria-label={`${getDebtActionMeta("pay").label} for ${d.name}`} title={getDebtActionMeta("pay").description} className="rounded-xl bg-emerald-50 px-3 py-2 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 active:scale-[0.98]">{getDebtActionMeta("pay").label}</button>
+                              <button type="button" onClick={() => setDebtAction({ id: d.id, type: "add", amount: "" })} aria-label={`${getDebtActionMeta("add").label} for ${d.name}`} title={getDebtActionMeta("add").description} className="rounded-xl bg-rose-50 px-3 py-2 text-[11px] font-semibold text-rose-700 transition-colors hover:bg-rose-100 active:scale-[0.98]">{getDebtActionMeta("add").label}</button>
                             </div>
                             {debtAction?.id === d.id && (
-                              <div className="mt-2 flex items-center justify-end gap-2">
-                                <input autoFocus type="number" min="1" value={debtAction.amount} onChange={(e) => setDebtAction((prev) => ({ ...prev, amount: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") submitDebtAction(); if (e.key === "Escape") setDebtAction(null); }} placeholder={debtAction.type === "pay" ? "Payment" : "Add amount"} aria-label={`${debtAction.type === "pay" ? "Payment" : "Add-on"} amount for ${d.name}`} className="w-24 rounded-lg border border-neutral-200 px-2 py-1.5 text-xs" />
-                                <button type="button" onClick={submitDebtAction} className="rounded-lg bg-neutral-950 px-2.5 py-1.5 text-[11px] font-medium text-white">Save</button>
-                                <button type="button" onClick={() => setDebtAction(null)} className="rounded-lg bg-neutral-100 px-2.5 py-1.5 text-[11px] font-medium text-neutral-600">Cancel</button>
+                              <div className="mt-2 rounded-xl border border-neutral-100 bg-neutral-50 p-2.5">
+                                <p className="mb-2 text-right text-[11px] leading-4 text-neutral-500">{getDebtActionMeta(debtAction.type).description}</p>
+                                <div className="flex items-center justify-end gap-2">
+                                  <input autoFocus type="number" min="1" value={debtAction.amount} onChange={(e) => setDebtAction((prev) => ({ ...prev, amount: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") submitDebtAction(); if (e.key === "Escape") setDebtAction(null); }} placeholder={getDebtActionMeta(debtAction.type).placeholder} aria-label={`${getDebtActionMeta(debtAction.type).amountLabel} for ${d.name}`} className="w-36 rounded-lg border border-neutral-200 bg-white px-2.5 py-2 text-xs" />
+                                  <button type="button" onClick={submitDebtAction} className="rounded-lg bg-neutral-950 px-2.5 py-2 text-[11px] font-medium text-white">Save</button>
+                                  <button type="button" onClick={() => setDebtAction(null)} className="rounded-lg bg-white px-2.5 py-2 text-[11px] font-medium text-neutral-600 ring-1 ring-neutral-200">Cancel</button>
+                                </div>
                               </div>
                             )}
                           </td>

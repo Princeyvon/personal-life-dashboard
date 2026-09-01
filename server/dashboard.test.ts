@@ -2,8 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
 import { dashboardSnapshotSchema } from "@shared/dashboard";
-import { applyIncomeReceipt, addIncomeExpected, applyDebtPayment, addDebtPrincipal, appendVoiceNote, applyVoiceActionToState, filterTodosForProject } from "@shared/interactionHelpers";
+import { applyIncomeReceipt, addIncomeExpected, applyDebtPayment, addDebtPrincipal, appendVoiceNote, applyVoiceActionToState, filterTodosForProject, calculateCompletionPercent, buildTodayCardItems, getDebtActionMeta } from "@shared/interactionHelpers";
 import { addRelationshipGoal, editRelationshipGoal, toggleRelationshipGoal, deleteRelationshipGoal } from "@shared/relationshipHelpers";
+import { handleDashboardPinRequest } from "./pin";
 
 const { mockDb, mockPinUser, mockExistingSnapshot } = vi.hoisted(() => {
   const where = vi.fn(async () => []);
@@ -77,6 +78,38 @@ describe("dashboard persistence", () => {
     expect(appendVoiceNote("", "Typed fallback")).toBe("Typed fallback");
   });
 
+  it("calculates synchronized Today card completion percentages", () => {
+    expect(calculateCompletionPercent([])).toBe(0);
+    expect(calculateCompletionPercent([{ done: false }])).toBe(0);
+    expect(calculateCompletionPercent([{ done: true }, { done: false }, { done: true }])).toBe(67);
+    expect(calculateCompletionPercent([{ done: true }, { done: true }])).toBe(100);
+  });
+
+  it("builds synchronized Today cards across all eight life areas", () => {
+    const categories = ["gym", "food", "classes", "masters", "work", "finance", "relationships", "health"].map((key) => ({ key, defaultText: `Default ${key}` }));
+    const result = buildTodayCardItems(categories, {
+      gym: [{ id: "gym-1", done: true }],
+      finance: [{ id: "finance-1", done: false }],
+      relationships: [{ id: "people-1", done: true }],
+      health: [{ id: "health-1", done: false }],
+    }, {
+      gym: [{ id: "gym-1", done: false }, { id: "gym-2", done: false }],
+    });
+    expect(Object.keys(result)).toEqual(["gym", "food", "classes", "masters", "work", "finance", "relationships", "health"]);
+    expect(result.gym).toHaveLength(2);
+    expect(result.finance[0].id).toBe("finance-1");
+    expect(result.relationships[0].id).toBe("people-1");
+    expect(result.health[0].id).toBe("health-1");
+    expect(result.food[0]).toMatchObject({ id: "food-default", done: false, source: "plan" });
+  });
+
+  it("keeps partial Pay and Add-on debt actions distinct", () => {
+    expect(getDebtActionMeta("pay")).toMatchObject({ label: "Pay part", amountLabel: "Payment amount" });
+    expect(getDebtActionMeta("pay").description).toContain("partial payment");
+    expect(getDebtActionMeta("add")).toMatchObject({ label: "Add on", amountLabel: "Add-on amount" });
+    expect(getDebtActionMeta("add").description).toContain("outstanding balance");
+  });
+
   it("scopes Work todos to the active project", () => {
     const todos = [
       { id: 1, text: "Build hero", domain: "work", projectId: 1 },
@@ -113,13 +146,33 @@ describe("dashboard persistence", () => {
 
 
 describe("PIN authentication", () => {
+  function createPinResponse() {
+    const response = {
+      statusCode: 200,
+      payload: null as unknown,
+      cookie: vi.fn(),
+      status(statusCode: number) {
+        response.statusCode = statusCode;
+        return response;
+      },
+      json(payload: unknown) {
+        response.payload = payload;
+        return response;
+      },
+    };
+    return response;
+  }
+
+  function createPinRequest(pin: unknown, ip: string) {
+    return { body: { pin }, headers: {}, protocol: "https", ip } as any;
+  }
+
   it("accepts the configured initial PIN through the lightweight login endpoint", async () => {
-    const response = { cookie: vi.fn(), clearCookie: vi.fn() };
-    const caller = appRouter.createCaller({ ...context(null), res: response as unknown as TrpcContext["res"] });
-    const result = await caller.auth.pinLogin({ pin: process.env.PIN_LOGIN_INITIAL_PIN || "" });
-    expect(result.success).toBe(true);
-    expect(result.user.openId).toBe(process.env.OWNER_OPEN_ID || "pin-owner");
-    expect(result.user.loginMethod).toBe("pin");
+    const response = createPinResponse();
+    const configuredPin = process.env.DASHBOARD_PIN || process.env.PIN_LOGIN_INITIAL_PIN || "3030";
+    await handleDashboardPinRequest(createPinRequest(configuredPin, "dashboard-test-pin-success"), response as any);
+    expect(response.statusCode).toBe(200);
+    expect(response.payload).toEqual({ success: true });
     expect(response.cookie).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.objectContaining({ httpOnly: true, secure: true }));
   });
 
@@ -129,7 +182,10 @@ describe("PIN authentication", () => {
   });
 
   it("rejects an incorrect PIN", async () => {
-    await expect(appRouter.createCaller(context(null)).auth.pinLogin({ pin: "0000" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    const response = createPinResponse();
+    await handleDashboardPinRequest(createPinRequest("0000", "dashboard-test-pin-invalid"), response as any);
+    expect(response.statusCode).toBe(401);
+    expect(response.payload).toEqual({ success: false, error: "That PIN didn’t unlock the dashboard. Check it and try again." });
   });
 });
 

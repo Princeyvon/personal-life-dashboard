@@ -113,3 +113,27 @@ export function applyVoiceActionToState(state: VoiceUpdateState, action: any, da
       return state;
   }
 }
+
+export function calculateCompletionPercent(items: Array<{ done?: boolean }> = []) {
+  if (!items.length) return 0;
+  return Math.round((items.filter((item) => item.done).length / items.length) * 100);
+}
+
+export function getDebtActionMeta(type: "pay" | "add") {
+  return type === "pay"
+    ? { label: "Pay part", amountLabel: "Payment amount", placeholder: "Enter partial payment", description: "Apply a partial payment to this balance." }
+    : { label: "Add on", amountLabel: "Add-on amount", placeholder: "Enter added amount", description: "Add a new amount to the outstanding balance." };
+}
+
+export function buildTodayCardItems(
+  categories: Array<{ key: string; defaultText: string }>,
+  sources: Record<string, any[]> = {},
+  plans: Record<string, any[]> = {},
+) {
+  return categories.reduce<Record<string, any[]>>((result, category) => {
+    const custom = plans[category.key] || [];
+    const items = [...(sources[category.key] || []), ...custom].filter((item, index, list) => list.findIndex((candidate) => String(candidate.id) === String(item.id)) === index);
+    result[category.key] = items.length ? items : [{ id: `${category.key}-default`, text: category.defaultText, done: false, source: "plan" }];
+    return result;
+  }, {});
+}

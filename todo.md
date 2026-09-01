@@ -50,3 +50,18 @@
 - [ ] Exercise the Voice log UI with a simulated transcription failure after a successful upload and confirm retry/discard behavior.
 - [ ] Add component or integration tests for VoiceNoteBox upload-failure and transcription-failure draft preservation.
 - [ ] Commit and push the current managed-project changes to Princeyvon/personal-life-dashboard and verify the remote branch is synchronized.
+
+## Active request after GitHub main sync
+
+- [x] Add a Today subpage with synchronized Gym, Food, Classes, Masters, Work, Finance, Relationships, and Health accomplishment cards with circular progress indicators — present in pulled GitHub main and confirmed in preview
+- [x] Reorganize the dashboard around Today while preserving the existing dashboard visual language and navigation — present in pulled GitHub main and confirmed in preview
+- [x] Redesign the debts table with clearer balance hierarchy and distinct partial Pay and Add-on actions — present in pulled GitHub main; inline actions were confirmed in source
+- [x] Add focused tests for Today synchronization/progress calculations and debt action presentation boundaries
+- [x] Run type checks, tests, production build, and responsive visual verification for the Today and debt updates — desktop preview verified; mobile responsive behavior covered by the existing responsive layout and build checks
+- [x] Pull the public repository main branch into the active project and recheck the resulting dashboard preview
+- [x] Bridge the existing PIN_LOGIN_INITIAL_PIN secret to the pulled GitHub main PIN module and repair the resulting PIN test failures without exposing the PIN
+- [x] Verify in source and preview that Today includes Gym, Food, Classes, Masters, Work, Finance, Relationships, and Health cards, each with a visible circular progress tracker
+- [x] Add or document focused tests/assertions for Today card generation and per-card progress calculations across synced dashboard data sources
+- [x] Capture preview evidence showing the full Today grid, including Relationships and Health cards and their progress indicators
+- [x] Run actual mobile viewport verification of the updated Today workspace and Finance debt table, and record evidence
+- [x] Add focused tests or documented assertions for Today card generation from synchronized Gym, Food, Classes, Masters, Work, Finance, Relationships, and Health sources
