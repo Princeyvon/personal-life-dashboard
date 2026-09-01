@@ -68,6 +68,20 @@ describe("dashboard PIN configuration", () => {
     expect(session?.openId).toBe(PIN_OPEN_ID);
   });
 
+  it("allows the correct PIN to recover after invalid attempts from the same address", async () => {
+    const address = "pin-test-recovery";
+    for (let attempt = 0; attempt < 7; attempt += 1) {
+      const response = createResponse();
+      await handleDashboardPinRequest(createRequest("0000", address), response);
+      expect(response.statusCode).toBe(attempt < 6 ? 401 : 429);
+    }
+
+    const response = createResponse();
+    await handleDashboardPinRequest(createRequest("3030", address), response);
+    expect(response.statusCode).toBe(200);
+    expect(response.payload).toEqual({ success: true });
+  });
+
   it("returns a safe error for an incorrect PIN", async () => {
     const response = createResponse();
     await handleDashboardPinRequest(createRequest("0000", "pin-test-invalid"), response);

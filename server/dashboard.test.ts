@@ -33,6 +33,18 @@ describe("dashboard persistence", () => {
     expect(dashboardSnapshotSchema.safeParse({ todos: [] }).success).toBe(false);
   });
 
+  it("accepts Georgetown weekly availability without changing required snapshot fields", () => {
+    const snapshot = dashboardSnapshotSchema.safeParse({
+      todos: [], income: [], debts: [], weight: [], workouts: [], sleep: [], conditionLog: [], diseases: [], projects: [], assignments: [], readings: [], classes: [], syllabusEvents: [], applications: [], recommenders: [], people: [], voiceLog: [],
+      georgetownAvailability: [
+        { day: "Sunday", window: "After 6:30 PM", detail: "Following classes." },
+        { day: "Thursday", window: "Fully available all day", detail: "" },
+      ],
+    });
+    expect(snapshot.success).toBe(true);
+    expect(snapshot.data?.georgetownAvailability).toHaveLength(2);
+  });
+
   it("allows authenticated edits and check-ins through protected procedures", async () => {
     const caller = appRouter.createCaller(context(user));
     await expect(caller.core.routines.update({ id: 1, title: "Updated" })).resolves.toEqual({ success: true });

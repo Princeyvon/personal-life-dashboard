@@ -2,6 +2,15 @@ import { trpc } from "@/lib/trpc";
 import { TRPCClientError } from "@trpc/client";
 import { useCallback, useMemo, useState } from "react";
 
+export function buildAuthState<T>(user: T | null | undefined, loading: boolean, error: unknown) {
+  return {
+    user: user ?? null,
+    loading,
+    error: error ?? null,
+    isAuthenticated: Boolean(user),
+  };
+}
+
 type UseAuthOptions = {
   redirectOnUnauthenticated?: boolean;
   redirectPath?: string;
@@ -73,12 +82,11 @@ export function useAuth(_options?: UseAuthOptions) {
         JSON.stringify(meQuery.data)
       );
     } catch {}
-    return {
-      user: meQuery.data ?? null,
-      loading: meQuery.isLoading || logoutMutation.isPending || pinLoginLoading,
-      error: meQuery.error ?? logoutMutation.error ?? null,
-      isAuthenticated: Boolean(meQuery.data),
-    };
+    return buildAuthState(
+      meQuery.data,
+      meQuery.isLoading || logoutMutation.isPending || pinLoginLoading,
+      meQuery.error ?? logoutMutation.error ?? null,
+    );
   }, [
     meQuery.data,
     meQuery.error,

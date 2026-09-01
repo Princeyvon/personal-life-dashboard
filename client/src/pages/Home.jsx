@@ -10,7 +10,7 @@ import {
   Home, HeartPulse, Wallet, Briefcase, GraduationCap, Users, Bell,
   Plus, TrendingUp, TrendingDown, Droplet, Flame, Moon, Dumbbell, Scale,
   Target, AlertTriangle, Check, Trash2, Pencil, ChevronRight, ChevronLeft, ChevronDown, Gauge, Calendar, RefreshCw, MapPin, Pill, ListTodo,
-  Mic, Square, Sparkles, X, BookOpen, MessageCircle, LockKeyhole
+  Mic, Square, Sparkles, X, BookOpen, MessageCircle
 } from "lucide-react";
 import {
   AreaChart, Area, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -25,6 +25,64 @@ const domainMeta = {
   relationships: { label: "Relationships", icon: Users, color: "rose" },
   calendar: { label: "Calendar", icon: Calendar, color: "lime" },
 };
+
+const georgetownAvailabilityDefaults = [
+  { day: "Sunday", window: "After 6:30 PM", detail: "Following Behavioral Economics and Bank Runs, Crises, and Policy Responses." },
+  { day: "Monday", window: "8:00–10:00 AM · 11:15 AM–2:30 PM · after 5:15 PM", detail: "" },
+  { day: "Tuesday", window: "8:00 AM–2:30 PM · after 3:45 PM", detail: "" },
+  { day: "Wednesday", window: "8:00–10:00 AM · 11:15 AM–2:30 PM · after 5:15 PM", detail: "" },
+  { day: "Thursday", window: "Fully available all day", detail: "" },
+];
+
+const georgetownClassDefaults = [
+  { id: "gt-islamic-world-history", name: "Islamic World History", meetingDays: "Mon / Wed", startTime: "14:30", endTime: "15:45", room: "2A25", startDate: "2026-08-23", endDate: "2026-12-14", program: "Georgetown" },
+  { id: "gt-research-project-design", name: "Research Project Design (Intl Econ)", meetingDays: "Mon / Wed", startTime: "10:00", endTime: "11:15", room: "1A04", startDate: "2026-08-23", endDate: "2026-12-14", program: "Georgetown" },
+  { id: "gt-intro-behavioral-economics", name: "Intro to Behavioral Economics", meetingDays: "Sun / Tue", startTime: "14:30", endTime: "15:45", room: "0A04", startDate: "2026-08-23", endDate: "2026-12-14", program: "Georgetown" },
+  { id: "gt-bank-runs", name: "Bank Runs, Crises, Pol. Responses", meetingDays: "Sun", startTime: "16:00", endTime: "18:30", room: "LD03", startDate: "2026-08-23", endDate: "2026-12-14", program: "Georgetown" },
+  { id: "gt-economic-development", name: "Economic Development", meetingDays: "Mon / Wed", startTime: "16:00", endTime: "17:15", room: "0A12", startDate: "2026-08-23", endDate: "2026-12-14", program: "Georgetown" },
+];
+
+function normalizedCourseName(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function coursesMatch(left, right) {
+  const a = normalizedCourseName(left?.name || left);
+  const b = normalizedCourseName(right?.name || right);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.includes("behavioral economics") && b.includes("behavioral economics")) return true;
+  if (a.includes("bank runs") && b.includes("bank runs")) return true;
+  return false;
+}
+
+function mergeGeorgetownClasses(savedClasses) {
+  const incoming = Array.isArray(savedClasses) ? savedClasses : [];
+  const used = new Set();
+  const defaults = georgetownClassDefaults.map((course) => {
+    const index = incoming.findIndex((candidate, candidateIndex) => !used.has(candidateIndex) && coursesMatch(candidate, course));
+    if (index === -1) return { ...course };
+    used.add(index);
+    return { ...course, ...incoming[index], name: course.name, meetingDays: incoming[index].meetingDays || course.meetingDays, startTime: incoming[index].startTime || course.startTime, endTime: incoming[index].endTime || course.endTime, room: incoming[index].room || course.room, startDate: incoming[index].startDate || course.startDate, endDate: incoming[index].endDate || course.endDate };
+  });
+  return [...defaults, ...incoming.filter((_, index) => !used.has(index))];
+}
+
+function formatCourseTime(time) {
+  if (!time) return "";
+  const [hour, minute] = String(time).split(":").map(Number);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return time;
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${String(minute).padStart(2, "0")} ${suffix}`;
+}
+
+function formatCourseDate(value) {
+  if (!value) return "No date";
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(date);
+}
 
 const colorMap = {
   emerald: { badgeBg: "bg-emerald-50", badgeText: "text-emerald-600", dot: "bg-emerald-400", ring: "#34D399", solid: "bg-emerald-400" },
@@ -404,66 +462,55 @@ export function VoiceNoteBox({ onSubmit, loading, placeholder }) {
 
 function MobileDock({ items, active, onChange, onVoice }) {
   const activeIndex = Math.max(0, items.findIndex((i) => i.key === active));
-  const vbw = 342;
-  const cx = (activeIndex + 0.5) * (vbw / items.length);
   const leftPct = ((activeIndex + 0.5) / items.length) * 100;
   const ActiveIcon = items[activeIndex]?.icon;
+  const activeLabel = domainMeta[active]?.label || "Home";
 
   return (
     <div className="mobile-dock-shell md:hidden fixed left-0 right-0 bottom-5 flex flex-col items-center gap-3 px-5 z-20">
       <style>{`
-        @keyframes dockPopScale { 0%{transform:scale(.7);} 55%{transform:scale(1.14);} 100%{transform:scale(1);} }
-        .dock-pop-inner { animation: dockPopScale .48s cubic-bezier(.34,1.56,.64,1); }
+        @keyframes dockPopScale { 0%{transform:scale(.72);} 55%{transform:scale(1.08);} 100%{transform:scale(1);} }
+        .dock-pop-inner { animation: dockPopScale .42s cubic-bezier(.32,.72,0,1); }
         @media (prefers-reduced-motion: reduce) { .dock-pop-inner { animation: none; } }
       `}</style>
       {onVoice && <button type="button" className="mobile-voice-cta" onClick={onVoice} aria-label="Open voice log"><span><strong>Voice log</strong><small>Tap to speak</small></span><span className="mobile-voice-wave"><Mic size={20} /></span><Mic size={21} /></button>}
       <div className="mobile-dock-bar relative w-full max-w-[360px]" style={{ height: 64 }}>
-        <svg className="absolute inset-0 w-full h-full overflow-visible" viewBox={`0 0 ${vbw} 64`} preserveAspectRatio="none">
-          <defs>
-            <mask id="dockNotchMask" maskUnits="userSpaceOnUse">
-              <rect x="0" y="0" width={vbw} height="64" fill="#fff" />
-              <circle cx={cx} cy="0" r="30" fill="#000" style={{ transition: "cx .48s cubic-bezier(.34,1.32,.4,1)" }} />
-            </mask>
-          </defs>
-          <rect x="0.5" y="0.5" width={vbw - 1} height="63" rx="26" fill="#0a0a0a" stroke="rgba(255,255,255,0.12)" strokeWidth="1" mask="url(#dockNotchMask)" />
-        </svg>
+        <div className="mobile-dock-backdrop absolute inset-0" aria-hidden="true" />
 
-        <div className="absolute inset-0 flex">
+        <nav className="mobile-dock-items absolute inset-0 flex" aria-label="Dashboard sections">
           {items.map((it) => {
             const isActive = it.key === active;
             const Icon = it.icon;
+            const label = domainMeta[it.key]?.label || "Home";
             return (
               <button
                 key={it.key}
+                type="button"
                 onClick={() => onChange(it.key)}
-                aria-label={domainMeta[it.key]?.label || "Home"}
-                className="flex-1 flex items-center justify-center bg-transparent border-0"
+                aria-label={label}
+                aria-current={isActive ? "page" : undefined}
+                title={label}
+                className={`mobile-dock-button flex-1 flex items-center justify-center bg-transparent border-0 ${isActive ? "is-active" : ""}`}
               >
-                <Icon size={20} className={`transition-all duration-300 ${isActive ? "opacity-0 -translate-y-2 scale-75" : "text-white/60"}`} />
+                <Icon size={19} aria-hidden="true" />
               </button>
             );
           })}
-        </div>
+        </nav>
 
         {ActiveIcon && (
           <div
-            className="absolute w-14 h-14 rounded-full"
-            style={{
-              top: -22,
-              left: `${leftPct}%`,
-              transform: "translateX(-50%)",
-              transition: "left .48s cubic-bezier(.34,1.32,.4,1)",
-            }}
+            className="mobile-dock-active"
+            style={{ "--dock-progress": `${leftPct}%` }}
+            aria-hidden="true"
           >
-            <div
-              key={active}
-              className="dock-pop-inner w-full h-full rounded-full bg-lime-400 flex items-center justify-center"
-              style={{ boxShadow: "0 0 0 6px #F5F5F4, 0 8px 20px -4px rgba(163,230,53,.55)" }}
-            >
-              <ActiveIcon size={20} className="text-neutral-950" />
+            <div key={active} className="dock-pop-inner">
+              <ActiveIcon size={20} />
+              <span className="dock-active-signal" />
             </div>
           </div>
         )}
+        <span className="sr-only" aria-live="polite">Current section: {activeLabel}</span>
       </div>
     </div>
   );
@@ -597,7 +644,7 @@ export default function PersonalLifeOS() {
   const [todayPlan, setTodayPlan] = useState({});
   const [todayDraft, setTodayDraft] = useState({});
   const [debtAction, setDebtAction] = useState(null);
-  const { user, loading: authLoading, isAuthenticated, loginWithPin, pinLoginLoading, pinLoginError, logout } = useAuth();
+  const { user, loading: authLoading, isAuthenticated, loginWithPin, pinLoginLoading, pinLoginError } = useAuth();
   const snapshotQuery = trpc.dashboard.load.useQuery(undefined, { enabled: isAuthenticated, retry: false });
   const saveSnapshot = trpc.dashboard.save.useMutation();
   const [snapshotReady, setSnapshotReady] = useState(false);
@@ -1063,16 +1110,65 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
     setNewReading({ title: "", course: "" });
   }
 
-  // School — Georgetown: classes & syllabus
-  const [classes, setClasses] = useState([]);
+  // School — Georgetown: classes, semester availability & syllabus
+  const [classes, setClasses] = useState(() => mergeGeorgetownClasses([]));
+  const [georgetownAvailability, setGeorgetownAvailability] = useState(georgetownAvailabilityDefaults);
+  const [selectedCourseId, setSelectedCourseId] = useState(georgetownClassDefaults[0].id);
   const [newClass, setNewClass] = useState({ name: "", professor: "", schedule: "" });
+  const [courseItems, setCourseItems] = useState([]);
+  const [coursePerformance, setCoursePerformance] = useState([]);
+  const [courseDraft, setCourseDraft] = useState({ type: "Assignment", title: "", date: "", time: "", notes: "" });
+  const [performanceDraft, setPerformanceDraft] = useState({ title: "", score: "", outOf: "100", date: "", notes: "" });
+
   function addClass() {
     if (!newClass.name) return;
-    setClasses([...classes, { id: Date.now(), name: newClass.name, professor: newClass.professor, schedule: newClass.schedule }]);
+    const id = `class-${Date.now()}`;
+    setClasses((prev) => [...prev, { id, name: newClass.name, professor: newClass.professor, schedule: newClass.schedule, program: "Georgetown" }]);
+    setSelectedCourseId(id);
     setNewClass({ name: "", professor: "", schedule: "" });
   }
   function deleteClass(id) {
-    setClasses((prev) => prev.filter((c) => c.id !== id));
+    setClasses((prev) => prev.filter((c) => String(c.id) !== String(id)));
+    setCourseItems((prev) => prev.filter((item) => String(item.courseId) !== String(id)));
+    setCoursePerformance((prev) => prev.filter((item) => String(item.courseId) !== String(id)));
+    setTodos((prev) => prev.filter((todo) => String(todo.courseId) !== String(id)));
+    if (String(selectedCourseId) === String(id)) setSelectedCourseId(georgetownClassDefaults[0].id);
+  }
+  function addCourseItem() {
+    const course = classes.find((item) => String(item.id) === String(selectedCourseId));
+    const title = courseDraft.title.trim();
+    if (!course || !title) return;
+    const id = `academic-${Date.now()}`;
+    const item = { id, courseId: course.id, course: course.name, program: "Georgetown", type: courseDraft.type, title, date: courseDraft.date, time: courseDraft.time, notes: courseDraft.notes.trim(), status: "Planned" };
+    setCourseItems((prev) => [item, ...prev]);
+    if (courseDraft.date) {
+      setTodos((prev) => [...prev, { id: `academic-todo-${id}`, text: `${courseDraft.type}: ${title} — ${course.name}`, due: courseDraft.date, time: courseDraft.time, domain: "school", done: false, courseId: course.id, academicItemId: id }]);
+    }
+    setCourseDraft({ type: "Assignment", title: "", date: "", time: "", notes: "" });
+  }
+  function cycleCourseItemStatus(id) {
+    const order = ["Planned", "In progress", "Done"];
+    const current = courseItems.find((item) => String(item.id) === String(id));
+    if (!current) return;
+    const next = order[(order.indexOf(current.status) + 1) % order.length];
+    setCourseItems((prev) => prev.map((item) => String(item.id) === String(id) ? { ...item, status: next } : item));
+    setTodos((prev) => prev.map((todo) => String(todo.academicItemId) === String(id) ? { ...todo, done: next === "Done" } : todo));
+  }
+  function deleteCourseItem(id) {
+    setCourseItems((prev) => prev.filter((item) => String(item.id) !== String(id)));
+    setTodos((prev) => prev.filter((todo) => String(todo.academicItemId) !== String(id)));
+  }
+  function addCoursePerformance() {
+    const course = classes.find((item) => String(item.id) === String(selectedCourseId));
+    const title = performanceDraft.title.trim();
+    const score = Number(performanceDraft.score);
+    const outOf = Number(performanceDraft.outOf);
+    if (!course || !title || !Number.isFinite(score) || !Number.isFinite(outOf) || outOf <= 0) return;
+    setCoursePerformance((prev) => [{ id: `performance-${Date.now()}`, courseId: course.id, course: course.name, title, score, outOf, date: performanceDraft.date, notes: performanceDraft.notes.trim() }, ...prev]);
+    setPerformanceDraft({ title: "", score: "", outOf: "100", date: "", notes: "" });
+  }
+  function deleteCoursePerformance(id) {
+    setCoursePerformance((prev) => prev.filter((item) => String(item.id) !== String(id)));
   }
 
   const [syllabusEvents, setSyllabusEvents] = useState([]);
@@ -1087,6 +1183,19 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
     setSyllabusEvents((prev) => prev.filter((e) => e.id !== id));
   }
   const upcomingSyllabusEvents = [...syllabusEvents].sort((a, b) => new Date(a.date) - new Date(b.date));
+  const selectedCourse = classes.find((item) => String(item.id) === String(selectedCourseId)) || classes[0] || null;
+  const selectedCourseItems = courseItems.filter((item) => selectedCourse && String(item.courseId) === String(selectedCourse.id)).sort((a, b) => String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31")));
+  const selectedCourseOpenItems = selectedCourseItems.filter((item) => item.status !== "Done");
+  const selectedCourseDoneCount = selectedCourseItems.filter((item) => item.status === "Done").length;
+  const selectedCoursePerformance = coursePerformance.filter((item) => selectedCourse && String(item.courseId) === String(selectedCourse.id));
+  const courseSummaries = useMemo(() => classes.map((course) => {
+    const items = courseItems.filter((item) => String(item.courseId) === String(course.id));
+    const performance = coursePerformance.filter((item) => String(item.courseId) === String(course.id));
+    const completed = items.filter((item) => item.status === "Done").length;
+    const average = performance.length ? Math.round(performance.reduce((sum, item) => sum + (Number(item.score) / Math.max(Number(item.outOf) || 100, 1)) * 100, 0) / performance.length) : null;
+    const nextItem = items.filter((item) => item.status !== "Done" && item.date).sort((a, b) => String(a.date).localeCompare(String(b.date)))[0];
+    return { ...course, itemCount: items.length, completed, average, nextItem, progress: items.length ? Math.round((completed / items.length) * 100) : 0 };
+  }), [classes, courseItems, coursePerformance]);
 
   // School — Masters: applications & recommendations
   const [applications, setApplications] = useState([]);
@@ -1136,7 +1245,7 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
         ...todayLinkedTodos("health", (todo) => /food|meal|eat|water|hydrate|nutrition/i.test(todo.text)),
         ...nutritionPlan.map((meal) => ({ id: `meal-${meal.slot}`, text: `${meal.slot}: ${meal.meal}`, done: false, source: "plan" })),
       ],
-      classes: [...todayLinkedTodos("school", (todo) => !/application|masters|recommend/i.test(todo.text)), ...assignments.filter((item) => item.due === today && item.status !== "Graded").map((item) => ({ id: `assignment-${item.id}`, text: `${item.title}${item.course ? ` · ${item.course}` : ""}`, done: item.status === "Submitted" || item.status === "Graded", source: "assignment" }))],
+      classes: [...todayLinkedTodos("school", (todo) => !/application|masters|recommend/i.test(todo.text)), ...assignments.filter((item) => item.due === today && item.status !== "Graded").map((item) => ({ id: `assignment-${item.id}`, text: `${item.title}${item.course ? ` · ${item.course}` : ""}`, done: item.status === "Submitted" || item.status === "Graded", source: "assignment" })), ...courseItems.filter((item) => item.date === today && item.status !== "Done").map((item) => ({ id: `course-item-${item.id}`, text: `${item.type}: ${item.title}${item.course ? ` · ${item.course}` : ""}`, done: false, source: "course-item", courseItemId: item.id }))],
       masters: [...todayLinkedTodos("school", (todo) => /application|masters|recommend/i.test(todo.text)), ...applications.filter((item) => item.deadline === today && item.status !== "Received").map((item) => ({ id: `application-${item.id}`, text: `Application · ${item.school}`, done: item.status === "Submitted" || item.status === "Received", source: "application" }))],
       work: todayLinkedTodos("work"),
       finance: todayLinkedTodos("finance"),
@@ -1148,11 +1257,12 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
       ],
     };
     return buildTodayCardItems(todayCategories, sources, todayPlan);
-  }, [todayPlan, todayTodos, workouts, assignments, applications, currentFitnessDay, nutritionPlan, healthSchedules, sleep, conditionLog]);
+  }, [todayPlan, todayTodos, workouts, assignments, courseItems, applications, currentFitnessDay, nutritionPlan, healthSchedules, sleep, conditionLog]);
   function toggleTodayItem(categoryKey, item) {
     if (item.source === "todo") return toggleTodo(item.id);
     if (item.source === "assignment") return cycleAssignmentStatus(String(item.id).replace("assignment-", ""));
     if (item.source === "application") return cycleApplicationStatus(String(item.id).replace("application-", ""));
+    if (item.source === "course-item") return cycleCourseItemStatus(item.courseItemId || String(item.id).replace("course-item-", ""));
     if (item.source === "schedule") { const scheduledTodo = todayTodos.find((todo) => todo.scheduleId === Number(String(item.id).replace("schedule-", ""))); if (scheduledTodo) return toggleTodo(scheduledTodo.id); }
     if (item.source === "workout") return;
     setTodayPlan((prev) => {
@@ -1371,6 +1481,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
     { text: `${debtRows.filter(d => d.status === "Active" && d.balance > 1000000).length} debts have a balance over 1,000,000`, icon: AlertTriangle, target: "finance", sub: "debts" },
     { text: `${people.filter(p => daysSince(p.lastContacted) > p.threshold).length} people are overdue for a check-in`, icon: Users, target: "relationships", sub: "Friends" },
     { text: `${assignments.filter(a => a.status === "Not Started").length} assignment not started this week`, icon: GraduationCap, target: "school", sub: schoolSub },
+    { text: `${courseItems.filter((item) => item.status !== "Done").length} Georgetown course follow-up${courseItems.filter((item) => item.status !== "Done").length === 1 ? "" : "s"} open`, icon: BookOpen, target: "school", sub: "Georgetown" },
   ];
 
   const navItems = [
@@ -1419,7 +1530,10 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
       setProjects(loadedProjects);
       if (saved.assignments) setAssignments(saved.assignments);
       if (saved.readings) setReadings(saved.readings);
-      if (saved.classes) setClasses(saved.classes);
+      if (saved.classes) setClasses(mergeGeorgetownClasses(saved.classes));
+      if (saved.courseItems) setCourseItems(saved.courseItems);
+      if (saved.coursePerformance) setCoursePerformance(saved.coursePerformance);
+      if (saved.georgetownAvailability) setGeorgetownAvailability(saved.georgetownAvailability);
       if (saved.syllabusEvents) setSyllabusEvents(saved.syllabusEvents);
       if (saved.applications) setApplications(saved.applications);
       if (saved.recommenders) setRecommenders(saved.recommenders);
@@ -1432,10 +1546,10 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
 
   useEffect(() => {
     if (!isAuthenticated || !snapshotReady) return;
-    const payload = { todos, income, debts, weight, workouts, fitnessPlan, fitnessDayIndex, liftLog, nutritionPlan, sleep, conditionLog, diseases, diseaseArchive, healthSchedules, projects, assignments, readings, classes, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan };
+    const payload = { todos, income, debts, weight, workouts, fitnessPlan, fitnessDayIndex, liftLog, nutritionPlan, sleep, conditionLog, diseases, diseaseArchive, healthSchedules, projects, assignments, readings, classes, courseItems, coursePerformance, georgetownAvailability, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan };
     const timer = window.setTimeout(() => saveSnapshot.mutate(payload), 500);
     return () => window.clearTimeout(timer);
-  }, [isAuthenticated, snapshotReady, todos, income, debts, weight, workouts, fitnessPlan, fitnessDayIndex, liftLog, nutritionPlan, sleep, conditionLog, diseases, diseaseArchive, healthSchedules, projects, assignments, readings, classes, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan]);
+  }, [isAuthenticated, snapshotReady, todos, income, debts, weight, workouts, fitnessPlan, fitnessDayIndex, liftLog, nutritionPlan, sleep, conditionLog, diseases, diseaseArchive, healthSchedules, projects, assignments, readings, classes, courseItems, coursePerformance, georgetownAvailability, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan]);
 
   if (authLoading || (isAuthenticated && snapshotQuery.isLoading)) {
     return <div className="min-h-screen bg-neutral-100 flex items-center justify-center text-sm text-neutral-500">Loading your workspace…</div>;
@@ -1533,9 +1647,6 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
             <button type="button" aria-label="Open voice log" onClick={() => setShowGlobalVoiceLog(true)} className={`dashboard-action relative w-9 h-9 rounded-full flex items-center justify-center ${voiceLoading ? "bg-lime-400 text-neutral-950" : "bg-white text-neutral-500"}`}>
               {voiceLoading ? <span className="absolute inset-0 rounded-full border-2 border-neutral-950/20 border-t-neutral-950 animate-spin" /> : null}
               <Mic size={16} className="relative" />
-            </button>
-            <button type="button" onClick={logout} aria-label="Lock dashboard" title="Lock dashboard" className="dashboard-action w-9 h-9 rounded-full bg-white flex items-center justify-center text-neutral-500">
-              <LockKeyhole size={15} />
             </button>
             <div className="relative">
               <button onClick={() => setShowNotifications((v) => !v)} aria-label="Notifications" className="w-9 h-9 rounded-full bg-white flex items-center justify-center">
@@ -2175,31 +2286,126 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
 
             {schoolSub === "Georgetown" && (
               <>
-                <SectionCard title="My Classes" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "My Classes"} onClick={() => askIdeas("My Classes", JSON.stringify({ classes, schoolSub }))} />}>
-                  {classes.length === 0 && (
-                    <p className="text-sm text-neutral-400 mb-2">No classes added yet — add the classes you're taking this semester below.</p>
-                  )}
-                  <div className="flex flex-col">
-                    {classes.map((c) => (
-                      <div key={c.id} className="flex items-center justify-between py-2.5 border-b border-neutral-100 last:border-0">
-                        <div className="flex items-center gap-2">
-                          <span className="w-8 h-8 rounded-full bg-violet-50 flex items-center justify-center shrink-0">
-                            <BookOpen size={14} className="text-violet-600" />
-                          </span>
-                          <div>
-                            <p className="text-sm font-medium text-neutral-800">{c.name}</p>
-                            <p className="text-xs text-neutral-400">{[c.professor, c.schedule].filter(Boolean).join(" · ") || "—"}</p>
+                <SectionCard title="My Classes" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "My Classes"} onClick={() => askIdeas("My Classes", JSON.stringify({ classes, courseItems, coursePerformance, schoolSub }))} />}>
+                  <div className="mb-5 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-600">Georgetown · Fall 2026</p>
+                      <p className="mt-1 text-sm leading-6 text-neutral-500">Five weekly courses, one place to keep every checkpoint, study block, and result in view.</p>
+                    </div>
+                    <span className="text-xs font-medium text-neutral-400">Aug 23 — Dec 14</span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                    {courseSummaries.map((course) => {
+                      const selected = String(selectedCourseId) === String(course.id);
+                      return (
+                        <button type="button" key={course.id} onClick={() => setSelectedCourseId(course.id)} aria-pressed={selected} className={`group rounded-2xl p-4 text-left transition-[transform,background-color,box-shadow] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${selected ? "bg-neutral-950 text-white shadow-[0_18px_35px_rgba(23,23,23,0.16)]" : "bg-neutral-50 text-neutral-900 hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_16px_32px_rgba(53,64,37,0.08)]"}`}>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex min-w-0 items-start gap-3">
+                              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${selected ? "bg-lime-400 text-neutral-950" : "bg-violet-100 text-violet-700"}`}><BookOpen size={15} strokeWidth={1.8} /></span>
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold leading-5">{course.name}</p>
+                                <p className={`mt-1 text-xs ${selected ? "text-white/60" : "text-neutral-500"}`}>{course.professor || "Professor not added"}</p>
+                              </div>
+                            </div>
+                            <ChevronRight size={16} className={`mt-1 shrink-0 transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${selected ? "translate-x-1 text-lime-300" : "text-neutral-300 group-hover:translate-x-1"}`} />
                           </div>
+                          <div className={`mt-4 flex flex-wrap gap-x-3 gap-y-1 text-xs ${selected ? "text-white/70" : "text-neutral-500"}`}>
+                            <span className="inline-flex items-center gap-1.5"><Calendar size={12} />{course.meetingDays} · {formatCourseTime(course.startTime)}–{formatCourseTime(course.endTime)}</span>
+                            <span className="inline-flex items-center gap-1.5"><MapPin size={12} />Room {course.room || "—"}</span>
+                          </div>
+                          <div className={`mt-4 flex items-center justify-between border-t pt-3 text-[11px] ${selected ? "border-white/15 text-white/65" : "border-neutral-200 text-neutral-500"}`}>
+                            <span>{course.itemCount - course.completed} open follow-up{course.itemCount - course.completed === 1 ? "" : "s"}</span>
+                            <span>{course.average === null ? "No score yet" : `${course.average}% average`}</span>
+                          </div>
+                          {course.nextItem && <p className={`mt-3 truncate text-xs ${selected ? "text-lime-200" : "text-violet-700"}`}>Next · {course.nextItem.title} · {formatCourseDate(course.nextItem.date)}</p>}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {selectedCourse && (
+                    <div className="mt-5 rounded-[1.35rem] bg-white p-1.5 ring-1 ring-neutral-950/5">
+                      <div className="rounded-[1rem] bg-neutral-950 p-4 text-white sm:p-5">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-lime-300">Selected course</p>
+                            <h4 className="mt-1 text-lg font-semibold tracking-tight">{selectedCourse.name}</h4>
+                            <p className="mt-1 text-xs text-white/60">{selectedCourse.meetingDays} · {formatCourseTime(selectedCourse.startTime)}–{formatCourseTime(selectedCourse.endTime)} · Room {selectedCourse.room || "—"}</p>
+                          </div>
+                          <div className="rounded-full bg-white/10 px-3 py-1.5 text-xs text-white/75">{selectedCourseDoneCount}/{selectedCourseItems.length || 0} complete</div>
                         </div>
-                        <button onClick={() => deleteClass(c.id)}><Trash2 size={14} className="text-neutral-300" /></button>
+                        <p className="mt-4 max-w-2xl text-sm leading-6 text-white/70">Track every assessment, study block, and follow-up here. Dated items also appear in Today and the calendar through your school todo stream.</p>
+                      </div>
+
+                      <div className="grid gap-4 p-3 sm:p-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(18rem,0.85fr)]">
+                        <div className="rounded-2xl bg-neutral-50 p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div><p className="text-sm font-semibold text-neutral-900">Academic follow-ups</p><p className="mt-1 text-xs text-neutral-500">Assignments, quizzes, exams, study times, and anything to revisit.</p></div>
+                            <span className="shrink-0 rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-semibold text-violet-700">{selectedCourseOpenItems.length} open</span>
+                          </div>
+                          {selectedCourseItems.length ? (
+                            <div className="mt-4 flex flex-col gap-2">
+                              {selectedCourseItems.map((item) => (
+                                <div key={item.id} className="flex items-start gap-2 rounded-xl bg-white p-3 ring-1 ring-neutral-950/5">
+                                  <button type="button" onClick={() => cycleCourseItemStatus(item.id)} className="min-w-0 flex-1 text-left">
+                                    <div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-neutral-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{item.type}</span><StatusPill status={item.status} /></div>
+                                    <p className={`mt-2 text-sm font-medium ${item.status === "Done" ? "text-neutral-400 line-through" : "text-neutral-800"}`}>{item.title}</p>
+                                    <p className="mt-1 text-xs text-neutral-400">{item.date ? formatCourseDate(item.date) : "No date"}{item.time ? ` · ${formatCourseTime(item.time)}` : ""}{item.notes ? ` · ${item.notes}` : ""}</p>
+                                  </button>
+                                  <button type="button" onClick={() => deleteCourseItem(item.id)} aria-label={`Delete ${item.title}`} className="rounded-full p-1.5 text-neutral-300 transition-colors duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-rose-50 hover:text-rose-500"><Trash2 size={14} /></button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : <p className="mt-4 rounded-xl bg-white p-4 text-xs leading-5 text-neutral-500 ring-1 ring-neutral-950/5">No course follow-ups yet. Add the first deadline or study block below and I’ll keep it in the course, todo, and calendar views together.</p>}
+                          <form onSubmit={(event) => { event.preventDefault(); addCourseItem(); }} className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            <select value={courseDraft.type} onChange={(event) => setCourseDraft({ ...courseDraft, type: event.target.value })} className="rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-700"><option>Assignment</option><option>Quiz</option><option>Exam</option><option>Study session</option><option>Reading</option><option>Follow-up</option></select>
+                            <input value={courseDraft.title} onChange={(event) => setCourseDraft({ ...courseDraft, title: event.target.value })} placeholder="What needs follow-up?" className="rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-800 sm:col-span-1" />
+                            <input type="date" value={courseDraft.date} onChange={(event) => setCourseDraft({ ...courseDraft, date: event.target.value })} className="rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-700" />
+                            <input type="time" value={courseDraft.time} onChange={(event) => setCourseDraft({ ...courseDraft, time: event.target.value })} className="rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-700" />
+                            <input value={courseDraft.notes} onChange={(event) => setCourseDraft({ ...courseDraft, notes: event.target.value })} placeholder="Notes or next action" className="rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-800 sm:col-span-2" />
+                            <div className="flex justify-end sm:col-span-2"><button type="submit" className="inline-flex items-center gap-1.5 rounded-full bg-lime-400 px-4 py-2.5 text-xs font-semibold text-neutral-950 transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-y-0.5 active:scale-[0.98]"><Plus size={14} /> Add follow-up</button></div>
+                          </form>
+                        </div>
+
+                        <div className="rounded-2xl bg-[#f7f3ed] p-4">
+                          <div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold text-neutral-900">Performance</p><p className="mt-1 text-xs text-neutral-500">Keep results and reflections together by course.</p></div><span className="text-lg font-semibold text-neutral-950">{selectedCoursePerformance.length ? `${Math.round(selectedCoursePerformance.reduce((sum, item) => sum + (Number(item.score) / Math.max(Number(item.outOf) || 100, 1)) * 100, 0) / selectedCoursePerformance.length)}%` : "—"}</span></div>
+                          {selectedCoursePerformance.length ? <div className="mt-4 flex flex-col gap-2">{selectedCoursePerformance.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2.5 ring-1 ring-neutral-950/5"><div className="min-w-0"><p className="truncate text-xs font-medium text-neutral-800">{item.title}</p><p className="mt-1 text-[11px] text-neutral-400">{item.date ? formatCourseDate(item.date) : "No date"}{item.notes ? ` · ${item.notes}` : ""}</p></div><div className="flex items-center gap-2"><span className="text-xs font-semibold text-neutral-700">{item.score}/{item.outOf}</span><button type="button" onClick={() => deleteCoursePerformance(item.id)} aria-label={`Delete ${item.title} result`} className="rounded-full p-1 text-neutral-300 hover:bg-rose-50 hover:text-rose-500"><Trash2 size={13} /></button></div></div>)}</div> : <p className="mt-4 rounded-xl bg-white p-4 text-xs leading-5 text-neutral-500 ring-1 ring-neutral-950/5">No results logged yet. Add quiz, exam, or assignment results as they come in to see a simple course average.</p>}
+                          <form onSubmit={(event) => { event.preventDefault(); addCoursePerformance(); }} className="mt-4 grid grid-cols-2 gap-2">
+                            <input value={performanceDraft.title} onChange={(event) => setPerformanceDraft({ ...performanceDraft, title: event.target.value })} placeholder="Result name" className="col-span-2 rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-800" />
+                            <input type="number" min="0" value={performanceDraft.score} onChange={(event) => setPerformanceDraft({ ...performanceDraft, score: event.target.value })} placeholder="Score" className="rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-800" />
+                            <input type="number" min="1" value={performanceDraft.outOf} onChange={(event) => setPerformanceDraft({ ...performanceDraft, outOf: event.target.value })} placeholder="Out of" className="rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-800" />
+                            <input type="date" value={performanceDraft.date} onChange={(event) => setPerformanceDraft({ ...performanceDraft, date: event.target.value })} className="col-span-2 rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-700" />
+                            <input value={performanceDraft.notes} onChange={(event) => setPerformanceDraft({ ...performanceDraft, notes: event.target.value })} placeholder="Reflection (optional)" className="col-span-2 rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-800" />
+                            <div className="col-span-2 flex justify-end"><button type="submit" className="inline-flex items-center gap-1.5 rounded-full bg-neutral-950 px-4 py-2.5 text-xs font-semibold text-white transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-y-0.5 active:scale-[0.98]"><Plus size={14} /> Log result</button></div>
+                          </form>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-5 border-t border-neutral-100 pt-4">
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">Add another course</p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_0.8fr_1fr_auto]">
+                      <input placeholder="Class name" value={newClass.name} onChange={(e) => setNewClass({ ...newClass, name: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2.5 text-sm" />
+                      <input placeholder="Professor" value={newClass.professor} onChange={(e) => setNewClass({ ...newClass, professor: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2.5 text-sm" />
+                      <input placeholder="Schedule note" value={newClass.schedule} onChange={(e) => setNewClass({ ...newClass, schedule: e.target.value })} className="rounded-xl border border-neutral-200 px-3 py-2.5 text-sm" />
+                      <button type="button" onClick={addClass} className="inline-flex items-center justify-center gap-1 rounded-xl bg-neutral-100 px-4 py-2.5 text-sm font-medium text-neutral-700"><Plus size={14} /> Add</button>
+                    </div>
+                  </div>
+                </SectionCard>
+
+                <SectionCard title="Weekly availability" right={<span className="text-[11px] font-medium uppercase tracking-[0.12em] text-neutral-400">This semester</span>}>
+                  <p className="mb-4 text-sm leading-6 text-neutral-500">Your Georgetown availability windows are kept here as a weekly reference. Friday and Saturday were not specified.</p>
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                    {georgetownAvailability.map((item) => (
+                      <div key={item.day} className="flex flex-col gap-1 rounded-xl bg-neutral-50 px-3 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                        <span className="text-sm font-medium text-neutral-800">{item.day}</span>
+                        <div className="text-left sm:max-w-[75%] sm:text-right">
+                          <p className="text-sm text-neutral-600">{item.window}</p>
+                          {item.detail && <p className="mt-1 text-xs leading-5 text-neutral-400">{item.detail}</p>}
+                        </div>
                       </div>
                     ))}
-                  </div>
-                  <div className="flex flex-col sm:flex-row gap-2 mt-4">
-                    <input placeholder="Class (e.g. Econ 201)" value={newClass.name} onChange={(e) => setNewClass({ ...newClass, name: e.target.value })} className="flex-1 text-sm border border-neutral-200 rounded-lg px-3 py-2" />
-                    <input placeholder="Professor" value={newClass.professor} onChange={(e) => setNewClass({ ...newClass, professor: e.target.value })} className="text-sm border border-neutral-200 rounded-lg px-3 py-2" />
-                    <input placeholder="Schedule (e.g. Mon/Wed 10am)" value={newClass.schedule} onChange={(e) => setNewClass({ ...newClass, schedule: e.target.value })} className="text-sm border border-neutral-200 rounded-lg px-3 py-2" />
-                    <button onClick={addClass} className="px-4 py-2 bg-lime-400 text-neutral-950 text-sm font-medium rounded-lg flex items-center justify-center gap-1"><Plus size={14} /> Add class</button>
                   </div>
                 </SectionCard>
 
@@ -2446,6 +2652,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
             projects={projects}
             people={people}
             healthSchedules={healthSchedules}
+            classes={classes}
             onIdeas={askIdeas}
           />
         )}

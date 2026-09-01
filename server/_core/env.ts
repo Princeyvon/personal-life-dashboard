@@ -6,6 +6,8 @@ export const ENV = {
   ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
   ownerName: process.env.OWNER_NAME ?? "Personal Life Dashboard",
   dashboardPin: process.env.DASHBOARD_PIN ?? process.env.PIN_LOGIN_INITIAL_PIN ?? "",
+  // Temporary testing mode is opt-in; the PIN gate remains the default.
+  dashboardFreeAccess: process.env.DASHBOARD_FREE_ACCESS === "true",
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",

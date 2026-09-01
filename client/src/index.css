@@ -1240,32 +1240,40 @@ body {
 @media (max-width: 767px) {
   .mobile-dock-shell {
     display: flex !important;
-    left: 0.7rem !important;
-    right: 0.7rem !important;
-    bottom: max(0.8rem, env(safe-area-inset-bottom)) !important;
-    padding: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    padding: 0 0.75rem max(0.8rem, env(safe-area-inset-bottom)) !important;
     z-index: 40 !important;
+    pointer-events: none;
   }
+
+  .mobile-dock-shell > * { pointer-events: auto; }
 
   .mobile-voice-cta {
     display: grid;
-    grid-template-columns: minmax(0,1fr) 4.1rem 1.8rem;
+    grid-template-columns: minmax(0, 1fr) 4.1rem 1.8rem;
     align-items: center;
     width: 100%;
     max-width: 29rem;
     min-height: 4.85rem;
     padding: 0.75rem 1rem 0.75rem 1.25rem;
-    border: 0;
+    border: 1px solid rgba(255,255,255,0.08);
     border-radius: 1.45rem;
     background: var(--life-ink);
     color: #fff;
     text-align: left;
-    box-shadow: 0 18px 42px rgba(17,18,15,0.18);
+    box-shadow: 0 18px 42px rgba(17,18,15,0.18), inset 0 1px 0 rgba(255,255,255,0.08);
+    transition: transform 220ms var(--life-ease), background-color 220ms var(--life-ease), box-shadow 220ms var(--life-ease);
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(185,234,216,0.22);
   }
 
   .mobile-voice-cta:hover { background: #242720; transform: translateY(-2px); }
+  .mobile-voice-cta:active { transform: scale(0.98); }
+  .mobile-voice-cta:focus-visible { outline: 3px solid var(--life-focus); outline-offset: 3px; }
   .mobile-voice-cta strong { display: block; font-size: 0.92rem; letter-spacing: -0.02em; }
-  .mobile-voice-cta small { display: block; margin-top: 0.2rem; color: rgba(255,255,255,0.56); font-size: 0.68rem; }
+  .mobile-voice-cta small { display: block; margin-top: 0.2rem; color: rgba(255,255,255,0.62); font-size: 0.68rem; }
 
   .mobile-voice-wave {
     display: flex;
@@ -1275,21 +1283,97 @@ body {
     height: 3.5rem;
     margin: 0 auto;
     border-radius: 50%;
-    background: rgba(255,255,255,0.08);
-    box-shadow: inset 0 0 0 7px rgba(255,255,255,0.055);
-    color: var(--life-mint);
+    background: var(--life-mint);
+    box-shadow: inset 0 0 0 1px rgba(17,18,15,0.08), 0 6px 16px rgba(95,191,158,0.18);
+    color: var(--life-ink);
   }
 
-  .mobile-voice-cta > svg { justify-self: end; color: rgba(255,255,255,0.88); }
+  .mobile-voice-cta > svg { justify-self: end; color: var(--life-mint); }
+
   .mobile-dock-bar {
     min-height: 4.1rem !important;
-    padding: 0.2rem !important;
+    padding: 0.25rem !important;
+    isolation: isolate;
   }
 
-  .mobile-dock-bar > svg rect:last-child { fill: rgba(255,254,250,0.96); stroke: rgba(17,18,15,0.08); }
-  .mobile-dock-bar button { color: var(--life-faint) !important; }
-  .mobile-dock-bar button:hover { color: var(--life-ink) !important; }
-  .mobile-dock-bar .dock-pop-inner { background: var(--life-ink) !important; color: #fff !important; box-shadow: 0 0 0 6px var(--life-paper), 0 10px 20px rgba(17,18,15,0.18) !important; }
+  .mobile-dock-backdrop {
+    border: 1px solid rgba(17,18,15,0.09);
+    border-radius: 1.7rem;
+    background: rgba(255,254,250,0.90);
+    box-shadow: 0 14px 32px rgba(30,35,29,0.10), 0 2px 5px rgba(30,35,29,0.05), inset 0 1px 0 rgba(255,255,255,0.95);
+    backdrop-filter: blur(22px) saturate(125%);
+  }
+
+  .mobile-dock-backdrop::after {
+    position: absolute;
+    inset: 1px;
+    border: 1px solid rgba(255,255,255,0.58);
+    border-radius: 1.6rem;
+    content: "";
+    pointer-events: none;
+  }
+
+  .mobile-dock-items { z-index: 2; }
+
+  .mobile-dock-button {
+    min-width: 2.85rem;
+    min-height: 3.25rem;
+    border-radius: 1.2rem;
+    color: var(--life-ink-soft) !important;
+    transition: color 220ms var(--life-ease), transform 220ms var(--life-ease), background-color 220ms var(--life-ease);
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(185,234,216,0.28);
+  }
+
+  .mobile-dock-button svg { transition: transform 220ms var(--life-ease), opacity 180ms var(--life-ease); }
+  .mobile-dock-button:not(.is-active):hover { color: var(--life-ink) !important; background: rgba(17,18,15,0.045); }
+  .mobile-dock-button:not(.is-active):active svg { transform: scale(0.88); }
+  .mobile-dock-button.is-active { color: transparent !important; }
+  .mobile-dock-button.is-active svg { opacity: 0; transform: translateY(-0.55rem) scale(0.72); }
+  .mobile-dock-button:focus-visible { outline: 3px solid var(--life-focus); outline-offset: -4px; }
+
+  .mobile-dock-active {
+    position: absolute;
+    top: -1.15rem;
+    left: var(--dock-progress);
+    z-index: 3;
+    width: 3.7rem;
+    height: 3.7rem;
+    transform: translateX(-50%);
+    pointer-events: none;
+    transition: left 420ms var(--life-ease);
+  }
+
+  .mobile-dock-active > .dock-pop-inner {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    border: 4px solid var(--life-paper);
+    border-radius: 1.25rem;
+    background: var(--life-ink);
+    box-shadow: 0 0 0 1px rgba(17,18,15,0.06), 0 12px 24px rgba(17,18,15,0.17), inset 0 1px 0 rgba(255,255,255,0.12);
+    color: #fff;
+  }
+
+  .mobile-dock-active > .dock-pop-inner::after {
+    position: absolute;
+    right: 0.42rem;
+    bottom: 0.42rem;
+    width: 0.38rem;
+    height: 0.38rem;
+    border: 2px solid var(--life-ink);
+    border-radius: 50%;
+    background: var(--life-mint);
+    box-shadow: 0 0 0 1px rgba(185,234,216,0.24);
+    content: "";
+  }
+
+  .dock-active-signal { display: none; }
+
+  .dashboard-main { padding-bottom: 11rem !important; }
 }
 
 
@@ -1562,9 +1646,11 @@ body {
   }
 
   .mobile-dock-shell {
-    left: 0.55rem !important;
-    right: 0.55rem !important;
-    bottom: max(0.6rem, env(safe-area-inset-bottom)) !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    padding-inline: 0.55rem !important;
+    padding-bottom: max(0.6rem, env(safe-area-inset-bottom)) !important;
   }
 
   .mobile-voice-cta {
@@ -1576,8 +1662,8 @@ body {
     min-height: 4rem !important;
   }
 
-  .mobile-dock-bar button {
-    min-width: 2.85rem;
+  .mobile-dock-button {
+    min-width: 2.75rem;
     min-height: 3rem;
   }
 }

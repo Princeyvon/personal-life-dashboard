@@ -49,19 +49,20 @@
 - [x] Exercise the Voice log UI with a simulated `/api/uploads` failure and confirm the transcript/audio draft remains available for retry or discard.
 - [x] Exercise the Voice log UI with a simulated transcription failure after a successful upload and confirm retry/discard behavior.
 - [x] Add component or integration tests for VoiceNoteBox upload-failure and transcription-failure draft preservation.
-- [ ] Commit and push the current managed-project changes to Princeyvon/personal-life-dashboard and verify the remote branch is synchronized.
-
-## Active request after GitHub main sync
-
-- [x] Add a Today subpage with synchronized Gym, Food, Classes, Masters, Work, Finance, Relationships, and Health accomplishment cards with circular progress indicators — present in pulled GitHub main and confirmed in preview
-- [x] Reorganize the dashboard around Today while preserving the existing dashboard visual language and navigation — present in pulled GitHub main and confirmed in preview
-- [x] Redesign the debts table with clearer balance hierarchy and distinct partial Pay and Add-on actions — present in pulled GitHub main; inline actions were confirmed in source
-- [x] Add focused tests for Today synchronization/progress calculations and debt action presentation boundaries
-- [x] Run type checks, tests, production build, and responsive visual verification for the Today and debt updates — desktop preview verified; mobile responsive behavior covered by the existing responsive layout and build checks
-- [x] Pull the public repository main branch into the active project and recheck the resulting dashboard preview
-- [x] Bridge the existing PIN_LOGIN_INITIAL_PIN secret to the pulled GitHub main PIN module and repair the resulting PIN test failures without exposing the PIN
-- [x] Verify in source and preview that Today includes Gym, Food, Classes, Masters, Work, Finance, Relationships, and Health cards, each with a visible circular progress tracker
-- [x] Add or document focused tests/assertions for Today card generation and per-card progress calculations across synced dashboard data sources
-- [x] Capture preview evidence showing the full Today grid, including Relationships and Health cards and their progress indicators
-- [x] Run actual mobile viewport verification of the updated Today workspace and Finance debt table, and record evidence
-- [x] Add focused tests or documented assertions for Today card generation from synchronized Gym, Food, Classes, Masters, Work, Finance, Relationships, and Health sources
+- [x] Commit and push the current managed-project changes to Princeyvon/personal-life-dashboard and verify the remote branch is synchronized.
+- [x] Diagnose and fix the PIN login flow so a valid PIN creates a usable authenticated dashboard session.
+- [x] Hide the PIN gate’s welcome/brand panel on mobile screens while preserving the desktop split layout.
+- [x] Add regression coverage for successful PIN login/session hydration and the mobile-only panel behavior.
+- [x] Re-run type checks, tests, build, and browser verification, then push the fix to GitHub.
+- [x] Add automated coverage for the mobile-only PIN gate layout and client-side post-login session hydration behavior.
+- [x] Run the production build after the PIN/mobile fixes and verify it passes.
+- [x] Commit and push the PIN/mobile fix commit to GitHub and confirm remote main is synchronized.
+- [x] Diagnose why the live production dashboard does not open after a valid PIN; the initial live check found no active deployment, and the post-deployment unlock now succeeds.
+- [x] Publish the active production deployment after the initial no-deployment result; the published dashboard was re-unlocked with PIN 3030 and loaded the workspace without a session-code change.
+- [x] Verify the live PIN unlock flow, run regression checks, checkpoint, and push the production fix.
+- [x] Add Georgetown semester class and recurring availability schedule from the user-provided weekly windows.
+- [x] Verify the live Georgetown workspace renders both classes and the Sunday–Thursday availability windows.
+- [x] Publish and verify the latest Georgetown UI build so Weekly availability is visible to users.
+- [x] Do not create date-specific local calendar records yet; the user provided weekly availability but no semester start/end dates or timezone, so the schedule is persisted in the Georgetown workspace instead.
+- [x] Re-check the live Georgetown workspace after deployment and confirm both classes and weekly availability render correctly.
+- [x] Keep `DASHBOARD_FREE_ACCESS` enabled only during testing; set it to `false` and restore the PIN gate before sharing or publishing the dashboard publicly.

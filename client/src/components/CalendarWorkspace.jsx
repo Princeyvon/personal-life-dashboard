@@ -48,12 +48,12 @@ function eventTime(event) {
   return dateLabel(eventStart(event), { hour: "numeric", minute: "2-digit" });
 }
 
-function makeDerivedEvents({ todos = [], assignments = [], syllabusEvents = [], projects = [], people = [], healthSchedules = [], range }) {
+function makeDerivedEvents({ todos = [], assignments = [], syllabusEvents = [], projects = [], people = [], healthSchedules = [], classes = [], range }) {
   const taskEvents = todos.filter((item) => item.due && !item.done).map((item) => ({
     id: `todo-${item.id}`,
     title: item.text,
-    startAt: new Date(`${item.due}T09:00:00`),
-    endAt: new Date(`${item.due}T09:30:00`),
+    startAt: new Date(`${item.due}T${item.time || "09:00"}:00`),
+    endAt: new Date(new Date(`${item.due}T${item.time || "09:00"}:00`).getTime() + 30 * 60 * 1000),
     allDay: 0,
     source: "dashboard",
     derived: true,
@@ -119,7 +119,26 @@ function makeDerivedEvents({ todos = [], assignments = [], syllabusEvents = [], 
     }
     return events;
   }) : []);
-  return [...taskEvents, ...assignmentEvents, ...syllabus, ...peopleEvents, ...projectEvents, ...scheduleEvents].filter((event) => !Number.isNaN(eventStart(event).getTime()));
+  const classEvents = (range && classes.length ? classes.flatMap((course) => {
+    if (!course.startDate || !course.endDate || !course.meetingDays || !course.startTime) return [];
+    const weekdayMap = { sun: 0, sunday: 0, mon: 1, monday: 1, tue: 2, tues: 2, tuesday: 2, wed: 3, wednesday: 3, thu: 4, thurs: 4, thursday: 4, fri: 5, friday: 5, sat: 6, saturday: 6 };
+    const meetingDays = String(course.meetingDays).toLowerCase().split(/[\s/,]+/).map((day) => weekdayMap[day]).filter((day) => Number.isInteger(day));
+    if (!meetingDays.length) return [];
+    const events = [];
+    const day = new Date(range.start); day.setHours(0, 0, 0, 0);
+    const lastDay = new Date(range.end); lastDay.setHours(0, 0, 0, 0);
+    while (day <= lastDay) {
+      const currentDate = dateKey(day);
+      if (currentDate >= course.startDate && currentDate <= course.endDate && meetingDays.includes(day.getDay())) {
+        const startAt = new Date(`${currentDate}T${course.startTime}:00`);
+        const endAt = new Date(`${currentDate}T${course.endTime || course.startTime}:00`);
+        events.push({ id: `course-${course.id}-${currentDate}`, title: course.name, startAt, endAt, allDay: 0, source: "dashboard", derived: true, domain: "school", courseId: course.id, location: course.room ? `Room ${course.room}` : "", description: `Weekly Georgetown class · ${course.meetingDays} · ${course.startDate} through ${course.endDate}` });
+      }
+      day.setDate(day.getDate() + 1);
+    }
+    return events;
+  }) : []);
+  return [...taskEvents, ...assignmentEvents, ...syllabus, ...peopleEvents, ...projectEvents, ...scheduleEvents, ...classEvents].filter((event) => !Number.isNaN(eventStart(event).getTime()));
 }
 
 function rangeFor(cursor, view) {
@@ -146,7 +165,7 @@ function EventPill({ event, onClick }) {
   );
 }
 
-export default function CalendarWorkspace({ todos, assignments, syllabusEvents, projects, people, healthSchedules = [], onIdeas }) {
+export default function CalendarWorkspace({ todos, assignments, syllabusEvents, projects, people, healthSchedules = [], classes = [], onIdeas }) {
   const [cursor, setCursor] = useState(() => new Date());
   const [view, setView] = useState("month");
   const [selected, setSelected] = useState(null);
@@ -161,7 +180,7 @@ export default function CalendarWorkspace({ todos, assignments, syllabusEvents, 
   const createMutation = trpc.calendar.create.useMutation({ onSuccess: () => { setDraft(null); setSyncMessage("Event saved and mirrored to Google Calendar."); utils.calendar.list.invalidate(); }, onError: (error) => setSyncMessage(error.message || "Event could not be saved.") });
   const updateMutation = trpc.calendar.update.useMutation({ onSuccess: () => { setSelected(null); setDraft(null); setSyncMessage("Event updated and mirrored to Google Calendar."); utils.calendar.list.invalidate(); }, onError: (error) => setSyncMessage(error.message || "Event could not be updated.") });
   const deleteMutation = trpc.calendar.delete.useMutation({ onSuccess: () => { setSelected(null); setSyncMessage("Event deleted from the dashboard and Google Calendar."); utils.calendar.list.invalidate(); }, onError: (error) => setSyncMessage(error.message || "Event could not be deleted.") });
-  const derivedEvents = useMemo(() => makeDerivedEvents({ todos, assignments, syllabusEvents, projects, people, healthSchedules, range }), [todos, assignments, syllabusEvents, projects, people, healthSchedules, range]);
+  const derivedEvents = useMemo(() => makeDerivedEvents({ todos, assignments, syllabusEvents, projects, people, healthSchedules, classes, range }), [todos, assignments, syllabusEvents, projects, people, healthSchedules, classes, range]);
   const storedEvents = eventsQuery.data || [];
   const events = useMemo(() => [...storedEvents, ...derivedEvents].sort((a, b) => eventStart(a).getTime() - eventStart(b).getTime()), [storedEvents, derivedEvents]);
   const visibleEvents = useMemo(() => events.filter((event) => eventStart(event) <= range.end && eventEnd(event) >= range.start), [events, range]);
