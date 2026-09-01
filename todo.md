@@ -13,7 +13,7 @@
 - [x] Polish the visual design with an elegant, cohesive responsive experience while preserving workflows.
 - [x] Add or update Vitest coverage for migrated and production-critical behavior.
 - [x] Run type checks, tests, production build, health checks, and visual verification.
-- [ ] Save the completed project checkpoint and provide deployment guidance.
+- [x] Save the completed project checkpoint and provide deployment guidance.
 - [x] Audit the existing dashboard UI at desktop, tablet, and mobile widths without changing the core information architecture.
 - [x] Improve mobile screen fit, overflow handling, touch targets, and responsive navigation across all existing pages.
 - [x] Review and correct text/background contrast, focus states, form readability, and dark/light surface pairings.
@@ -46,9 +46,9 @@
 - [x] Verify the recording panel itself at desktop width with the voice UI open and document the desktop-specific result.
 - [x] Add a route-level invalid-MIME rejection test for authenticated audio upload requests.
 - [x] Exercise and document UI retry behavior after simulated upload failure and simulated transcription failure.
-- [ ] Exercise the Voice log UI with a simulated `/api/uploads` failure and confirm the transcript/audio draft remains available for retry or discard.
-- [ ] Exercise the Voice log UI with a simulated transcription failure after a successful upload and confirm retry/discard behavior.
-- [ ] Add component or integration tests for VoiceNoteBox upload-failure and transcription-failure draft preservation.
+- [x] Exercise the Voice log UI with a simulated `/api/uploads` failure and confirm the transcript/audio draft remains available for retry or discard.
+- [x] Exercise the Voice log UI with a simulated transcription failure after a successful upload and confirm retry/discard behavior.
+- [x] Add component or integration tests for VoiceNoteBox upload-failure and transcription-failure draft preservation.
 - [ ] Commit and push the current managed-project changes to Princeyvon/personal-life-dashboard and verify the remote branch is synchronized.
 
 ## Active request after GitHub main sync

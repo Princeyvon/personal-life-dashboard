@@ -5,6 +5,7 @@ import CalendarWorkspace from "@/components/CalendarWorkspace";
 import PinGate from "@/components/PinGate";
 import { applyIncomeReceipt, addIncomeExpected, applyDebtPayment, addDebtPrincipal, appendVoiceNote, buildFinanceInsights, applyVoiceActionToState, filterTodosForProject, calculateCompletionPercent, buildTodayCardItems, getDebtActionMeta } from "@shared/interactionHelpers";
 import { addRelationshipGoal, editRelationshipGoal, toggleRelationshipGoal, deleteRelationshipGoal } from "@shared/relationshipHelpers";
+import { buildVoiceFailureState, canSubmitVoiceDraft } from "@shared/voiceNoteHelpers";
 import {
   Home, HeartPulse, Wallet, Briefcase, GraduationCap, Users, Bell,
   Plus, TrendingUp, TrendingDown, Droplet, Flame, Moon, Dumbbell, Scale,
@@ -184,7 +185,7 @@ function voiceExtension(contentType) {
   return "webm";
 }
 
-function VoiceNoteBox({ onSubmit, loading, placeholder }) {
+export function VoiceNoteBox({ onSubmit, loading, placeholder }) {
   const [text, setText] = useState("");
   const [recording, setRecording] = useState(false);
   const [supported, setSupported] = useState(true);
@@ -317,7 +318,9 @@ function VoiceNoteBox({ onSubmit, loading, placeholder }) {
       uploaded = payload;
       setAudioPreview({ url: URL.createObjectURL(blob), meta: uploaded });
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "The recording could not be uploaded. You can still use the live transcript.");
+      const failure = buildVoiceFailureState("upload", uploadError, { text: textRef.current, audioPreview: null });
+      setError(failure.error);
+      setStatus(failure.status);
     }
 
     let finalText = textRef.current.trim();
@@ -327,7 +330,9 @@ function VoiceNoteBox({ onSubmit, loading, placeholder }) {
         finalText = transcript.text.trim();
         updateText(finalText);
       } catch (transcriptionError) {
-        setError(transcriptionError instanceof Error ? transcriptionError.message : "Audio was saved, but transcription was unavailable. You can type the note instead.");
+        const failure = buildVoiceFailureState("transcription", transcriptionError, { text: textRef.current, audioPreview: { url: URL.createObjectURL(blob), meta: uploaded } });
+        setError(failure.error);
+        setStatus(failure.status);
       }
     }
     setStatus(finalText ? "ready" : "needs-text");
@@ -357,7 +362,7 @@ function VoiceNoteBox({ onSubmit, loading, placeholder }) {
 
   async function submit() {
     const value = textRef.current.trim();
-    if (!value || loading || recording || status === "processing" || transcribeMutation.isPending) return;
+    if (!canSubmitVoiceDraft(value, loading || recording || status === "processing" || transcribeMutation.isPending)) return;
     const accepted = await onSubmit(value, audioPreview?.meta || null);
     if (accepted === false) return;
     updateText("");
