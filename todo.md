@@ -68,5 +68,9 @@
 - [x] Keep `DASHBOARD_FREE_ACCESS` enabled only during testing; set it to `false` and restore the PIN gate before sharing or publishing the dashboard publicly.
 - [x] Adapt the attached AI Voice reference into the real VoiceNoteBox listening state with accessible status text and reduced-motion behavior.
 - [x] Verify the listening animation on desktop/mobile, run tests/build, and save a checkpoint.
-- [ ] Make the dashboard publicly accessible by default while preserving the existing PIN login UI as an optional entry point.
-- [ ] Verify public access, optional PIN login, tests/build, and push the update to GitHub.
+- [x] Make the dashboard publicly accessible by default while preserving the existing PIN login UI as an optional entry point.
+- [x] Verify public access, optional PIN login, tests/build, and push the update to GitHub.
+- [x] Add a mobile-visible optional Login action to the public dashboard so the preserved PIN UI is reachable at narrow widths.
+- [x] Re-verify public access and optional mobile login, then run tests/build and save the updated checkpoint.
+- [x] Exercise the mobile Login control in a narrow preview and confirm it opens the preserved PIN overlay.
+- [x] Save a checkpoint after mobile optional-login verification.

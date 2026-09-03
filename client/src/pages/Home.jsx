@@ -498,7 +498,7 @@ export function VoiceNoteBox({ onSubmit, loading, placeholder }) {
   );
 }
 
-function MobileDock({ items, active, onChange, onVoice }) {
+function MobileDock({ items, active, onChange, onVoice, onLogin }) {
   const activeIndex = Math.max(0, items.findIndex((i) => i.key === active));
   const leftPct = ((activeIndex + 0.5) / items.length) * 100;
   const ActiveIcon = items[activeIndex]?.icon;
@@ -511,6 +511,7 @@ function MobileDock({ items, active, onChange, onVoice }) {
         .dock-pop-inner { animation: dockPopScale .42s cubic-bezier(.32,.72,0,1); }
         @media (prefers-reduced-motion: reduce) { .dock-pop-inner { animation: none; } }
       `}</style>
+      {onLogin && <div className="flex w-full max-w-[360px] justify-end"><button type="button" onClick={onLogin} className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-neutral-700 shadow-sm ring-1 ring-neutral-950/10">Login</button></div>}
       {onVoice && <button type="button" className="mobile-voice-cta" onClick={onVoice} aria-label="Open voice log"><span><strong>Voice log</strong><small>Tap to speak</small></span><span className="mobile-voice-wave"><Mic size={20} /></span><Mic size={21} /></button>}
       <div className="mobile-dock-bar relative w-full max-w-[360px]" style={{ height: 64 }}>
         <div className="mobile-dock-backdrop absolute inset-0" aria-hidden="true" />
@@ -1675,7 +1676,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
       </nav>
 
       {/* dock — mobile only */}
-      <MobileDock items={navItems} active={tab} onChange={setTab} onVoice={() => setShowGlobalVoiceLog(true)} />
+      <MobileDock items={navItems} active={tab} onChange={setTab} onVoice={() => setShowGlobalVoiceLog(true)} onLogin={() => setShowPinLogin(true)} />
 
       {/* main */}
       <main id="main-content" className="dashboard-main flex-1 md:ml-20 p-4 md:p-6 overflow-y-auto pb-28 md:pb-6 min-w-0">
