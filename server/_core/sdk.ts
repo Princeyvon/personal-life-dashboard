@@ -273,8 +273,8 @@ class SDKServer {
 
     const session = await this.verifySession(sessionToken);
 
-    // Temporary testing access: protected procedures still receive the same
-    // stable dashboard-owner identity, but no PIN/session is required.
+    // Public dashboard access: protected procedures receive the same stable
+    // dashboard-owner identity, while PIN login remains available as an optional entry point.
     if (!session && ENV.dashboardFreeAccess) {
       return getPinDashboardUser();
     }
@@ -319,7 +319,7 @@ async function getPinDashboardUser(): Promise<AuthenticatedUser> {
     await db.upsertUser({ openId: PIN_OPEN_ID, lastSignedIn: signedInAt });
   }
   if (!pinUser) {
-    // Local free-access previews may intentionally run without a database.
+    // Public previews may intentionally run without a database.
     return {
       id: 0,
       openId: PIN_OPEN_ID,
