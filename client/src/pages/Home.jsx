@@ -243,6 +243,29 @@ function voiceExtension(contentType) {
   return "webm";
 }
 
+function formatVoiceTime(seconds) {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+function AIListeningAnimation({ active, processing, elapsed }) {
+  if (!active) return null;
+  return (
+    <div className="ai-listening-panel" role="status" aria-live="polite" aria-label={processing ? "Preparing voice note transcript" : "AI listening"}>
+      <style>{`\n        .ai-listening-panel { display:flex; flex-direction:column; align-items:center; gap:7px; padding:12px 10px 10px; margin:10px 0 2px; border-radius:16px; background:rgba(244,244,240,.72); border:1px solid rgba(20,20,18,.07); }\n        .ai-listening-orb { display:grid; place-items:center; width:34px; height:34px; border-radius:11px; background:#11110f; color:#d5ff65; box-shadow:0 8px 20px rgba(17,17,15,.14); }\n        .ai-listening-orb::before { content:""; width:12px; height:12px; border:2px solid currentColor; border-top-color:transparent; border-radius:4px; animation:aiListeningSpin 1.1s linear infinite; }\n        .ai-listening-time { font:500 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace; color:rgba(17,17,15,.58); font-variant-numeric:tabular-nums; }\n        .ai-listening-wave { display:flex; align-items:center; justify-content:center; gap:3px; width:min(100%, 280px); height:22px; }\n        .ai-listening-bar { width:2px; height:100%; transform:scaleY(.2); transform-origin:center; border-radius:999px; background:#11110f; opacity:.58; animation:aiListeningPulse 820ms ease-in-out infinite alternate; animation-delay:var(--bar-delay); }\n        .ai-listening-label { margin:0; color:rgba(17,17,15,.7); font-size:11px; letter-spacing:.08em; text-transform:uppercase; }\n        @keyframes aiListeningSpin { to { transform:rotate(360deg); } }\n        @keyframes aiListeningPulse { from { transform:scaleY(.2); opacity:.34; } to { transform:scaleY(var(--bar-scale)); opacity:.82; } }\n        @media (prefers-reduced-motion: reduce) { .ai-listening-orb::before, .ai-listening-bar { animation:none; } .ai-listening-bar { transform:scaleY(.58); opacity:.62; } }\n      `}</style>
+      <div className="ai-listening-orb" aria-hidden="true" />
+      <span className="ai-listening-time">{formatVoiceTime(elapsed)}</span>
+      <div className="ai-listening-wave" aria-hidden="true">
+        {Array.from({ length: 40 }, (_, index) => (
+          <span key={index} className="ai-listening-bar" style={{ "--bar-scale": `${0.3 + ((index * 17) % 65) / 100}`, "--bar-delay": `${(index % 9) * 45}ms` }} />
+        ))}
+      </div>
+      <p className="ai-listening-label">{processing ? "Preparing transcript…" : "Listening…"}</p>
+    </div>
+  );
+}
+
 export function VoiceNoteBox({ onSubmit, loading, placeholder }) {
   const [text, setText] = useState("");
   const [recording, setRecording] = useState(false);
@@ -255,6 +278,7 @@ export function VoiceNoteBox({ onSubmit, loading, placeholder }) {
   const streamRef = useRef(null);
   const chunksRef = useRef([]);
   const stopTimerRef = useRef(null);
+  const voiceStartedAtRef = useRef(null);
   const textRef = useRef("");
   const recordingRef = useRef(false);
   const transcribeMutation = trpc.voice.transcribe.useMutation();
@@ -262,6 +286,21 @@ export function VoiceNoteBox({ onSubmit, loading, placeholder }) {
   useEffect(() => {
     textRef.current = text;
   }, [text]);
+
+  const listeningActive = status === "recording" || status === "processing";
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!listeningActive) {
+      setElapsed(0);
+      voiceStartedAtRef.current = null;
+      return undefined;
+    }
+    voiceStartedAtRef.current ||= Date.now();
+    const tick = () => setElapsed(Math.max(0, Math.floor((Date.now() - voiceStartedAtRef.current) / 1000)));
+    tick();
+    const intervalId = window.setInterval(tick, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [listeningActive]);
 
   useEffect(() => () => {
     if (audioPreview?.url) URL.revokeObjectURL(audioPreview.url);
@@ -442,9 +481,8 @@ export function VoiceNoteBox({ onSubmit, loading, placeholder }) {
         className="w-full text-sm border border-neutral-200 rounded-lg px-3 py-2 resize-none"
       />
       {!supported && <p className="text-xs text-amber-700 mt-2" role="status">Audio recording isn’t available in this browser — typing works the same way.</p>}
+      <AIListeningAnimation active={listeningActive} processing={status === "processing"} elapsed={elapsed} />
       {error && <p className="mt-2 text-xs leading-5 text-rose-700" role="alert">{error}</p>}
-      {status === "recording" && <p className="mt-2 text-xs text-rose-700" role="status" aria-live="polite">Recording up to 5 minutes. Tap Stop when you’re done.</p>}
-      {status === "processing" && <p className="mt-2 text-xs text-neutral-500" role="status" aria-live="polite">Saving your recording and preparing the transcript…</p>}
       {audioPreview?.url && <audio className="mt-3 w-full" controls preload="metadata" src={audioPreview.url} aria-label="Recorded voice note preview" />}
       <div className="flex flex-wrap gap-2 mt-3">
         {supported && <button type="button" onClick={recording ? stopRecording : startRecording} disabled={loading || status === "processing"} aria-pressed={recording} className={`min-h-11 px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 transition-transform active:scale-[0.98] disabled:cursor-wait disabled:opacity-60 ${recording ? "bg-rose-500 text-white" : "bg-neutral-100 text-neutral-700"}`}>

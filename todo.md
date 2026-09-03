@@ -66,3 +66,5 @@
 - [x] Do not create date-specific local calendar records yet; the user provided weekly availability but no semester start/end dates or timezone, so the schedule is persisted in the Georgetown workspace instead.
 - [x] Re-check the live Georgetown workspace after deployment and confirm both classes and weekly availability render correctly.
 - [x] Keep `DASHBOARD_FREE_ACCESS` enabled only during testing; set it to `false` and restore the PIN gate before sharing or publishing the dashboard publicly.
+- [x] Adapt the attached AI Voice reference into the real VoiceNoteBox listening state with accessible status text and reduced-motion behavior.
+- [x] Verify the listening animation on desktop/mobile, run tests/build, and save a checkpoint.

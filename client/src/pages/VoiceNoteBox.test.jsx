@@ -39,6 +39,9 @@ function installRecorderEnvironment() {
 async function recordOneNote() {
   fireEvent.click(screen.getByRole("button", { name: "Record audio" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "Stop recording" })).toBeTruthy());
+  expect(screen.getByRole("status", { name: "AI listening" })).toBeTruthy();
+  expect(screen.getByText("Listening…")).toBeTruthy();
+  expect(document.querySelectorAll(".ai-listening-bar").length).toBe(40);
   fireEvent.click(screen.getByRole("button", { name: "Stop recording" }));
 }
 
