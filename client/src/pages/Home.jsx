@@ -498,7 +498,7 @@ export function VoiceNoteBox({ onSubmit, loading, placeholder }) {
   );
 }
 
-function MobileDock({ items, active, onChange, onVoice, onLogin }) {
+function MobileDock({ items, active, onChange, onVoice }) {
   const activeIndex = Math.max(0, items.findIndex((i) => i.key === active));
   const leftPct = ((activeIndex + 0.5) / items.length) * 100;
   const ActiveIcon = items[activeIndex]?.icon;
@@ -511,8 +511,7 @@ function MobileDock({ items, active, onChange, onVoice, onLogin }) {
         .dock-pop-inner { animation: dockPopScale .42s cubic-bezier(.32,.72,0,1); }
         @media (prefers-reduced-motion: reduce) { .dock-pop-inner { animation: none; } }
       `}</style>
-      {onLogin && <div className="flex w-full max-w-[360px] justify-end"><button type="button" onClick={onLogin} className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-neutral-700 shadow-sm ring-1 ring-neutral-950/10">Login</button></div>}
-      {onVoice && <button type="button" className="mobile-voice-cta" onClick={onVoice} aria-label="Open voice log"><span><strong>Voice log</strong><small>Tap to speak</small></span><span className="mobile-voice-wave"><Mic size={20} /></span><Mic size={21} /></button>}
+      {onVoice && <button type="button" className="mobile-voice-cta !h-14 !w-14 !max-w-none !rounded-full !justify-center !p-0" onClick={onVoice} aria-label="Open voice log"><Mic size={21} /></button>}
       <div className="mobile-dock-bar relative w-full max-w-[360px]" style={{ height: 64 }}>
         <div className="mobile-dock-backdrop absolute inset-0" aria-hidden="true" />
 
@@ -684,7 +683,6 @@ export default function PersonalLifeOS() {
   const [todayDraft, setTodayDraft] = useState({});
   const [debtAction, setDebtAction] = useState(null);
   const { user, loading: authLoading, isAuthenticated, loginWithPin, pinLoginLoading, pinLoginError } = useAuth();
-  const [showPinLogin, setShowPinLogin] = useState(false);
   const snapshotQuery = trpc.dashboard.load.useQuery(undefined, { enabled: isAuthenticated, retry: false });
   const saveSnapshot = trpc.dashboard.save.useMutation();
   const [snapshotReady, setSnapshotReady] = useState(false);
@@ -1584,11 +1582,6 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
     setSnapshotReady(true);
   }, [isAuthenticated, snapshotQuery.isLoading, snapshotQuery.data, snapshotReady]);
 
-  async function handleOptionalPinLogin(pin) {
-    await loginWithPin(pin);
-    setShowPinLogin(false);
-  }
-
   useEffect(() => {
     if (!isAuthenticated || !snapshotReady) return;
     const payload = { todos, income, debts, weight, workouts, fitnessPlan, fitnessDayIndex, liftLog, nutritionPlan, sleep, conditionLog, diseases, diseaseArchive, healthSchedules, projects, assignments, readings, classes, courseItems, coursePerformance, georgetownAvailability, syllabusEvents, applications, recommenders, people, voiceLog, todayPlan };
@@ -1606,12 +1599,6 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
 
   return (
     <div className="dashboard-shell flex min-h-screen font-sans">
-      {showPinLogin && (
-        <div className="fixed inset-0 z-[70] overflow-y-auto bg-neutral-100/90 p-3 backdrop-blur-sm sm:p-6" role="dialog" aria-modal="true" aria-label="Optional PIN login">
-          <button type="button" onClick={() => setShowPinLogin(false)} className="fixed right-4 top-4 z-10 rounded-full bg-white px-3 py-2 text-xs font-semibold text-neutral-600 shadow-sm ring-1 ring-neutral-950/10">Close</button>
-          <PinGate loading={pinLoginLoading} error={pinLoginError} onSubmit={handleOptionalPinLogin} />
-        </div>
-      )}
       {showGlobalVoiceLog && (
         <div className="fixed inset-0 z-40 pointer-events-none" role="presentation">
           <div className="pointer-events-auto absolute right-4 top-20 w-[min(28rem,calc(100vw-2rem))] rounded-[1.35rem] bg-white/95 p-5 shadow-[0_20px_60px_rgba(53,64,37,0.18)] ring-1 ring-neutral-950/10 backdrop-blur-xl" role="dialog" aria-modal="false" aria-labelledby="global-voice-log-title">
@@ -1676,7 +1663,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
       </nav>
 
       {/* dock — mobile only */}
-      <MobileDock items={navItems} active={tab} onChange={setTab} onVoice={() => setShowGlobalVoiceLog(true)} onLogin={() => setShowPinLogin(true)} />
+      <MobileDock items={navItems} active={tab} onChange={setTab} onVoice={() => setShowGlobalVoiceLog(true)} />
 
       {/* main */}
       <main id="main-content" className="dashboard-main flex-1 md:ml-20 p-4 md:p-6 overflow-y-auto pb-28 md:pb-6 min-w-0">
@@ -1695,7 +1682,6 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
           </div>
           <div className="dashboard-header-actions flex items-center gap-3 shrink-0">
             {tab !== "home" && <IdeaButton loading={ideasMutation.isPending && ideaResult?.section === (domainMeta[tab]?.label || tab)} onClick={() => askIdeas(domainMeta[tab]?.label || tab, JSON.stringify({ tab, todos, income: incomeRows, debts: debtRows, applications, assignments, people }))} />}
-            <button type="button" onClick={() => setShowPinLogin(true)} className="dashboard-action hidden rounded-full bg-white px-3 py-2 text-xs font-semibold text-neutral-700 sm:inline-flex">Login</button>
             <button type="button" aria-label="Open voice log" onClick={() => setShowGlobalVoiceLog(true)} className={`dashboard-action relative w-9 h-9 rounded-full flex items-center justify-center ${voiceLoading ? "bg-lime-400 text-neutral-950" : "bg-white text-neutral-500"}`}>
               {voiceLoading ? <span className="absolute inset-0 rounded-full border-2 border-neutral-950/20 border-t-neutral-950 animate-spin" /> : null}
               <Mic size={16} className="relative" />

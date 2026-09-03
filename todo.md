@@ -74,3 +74,8 @@
 - [x] Re-verify public access and optional mobile login, then run tests/build and save the updated checkpoint.
 - [x] Exercise the mobile Login control in a narrow preview and confirm it opens the preserved PIN overlay.
 - [x] Save a checkpoint after mobile optional-login verification.
+- [x] Hide the optional Login button/section from the public dashboard while keeping the PIN gate available in code.
+- [x] Replace the mobile Voice log bar with a simple compact circular button and verify responsive behavior.
+- [x] Run tests/build, save a checkpoint, and push the UI refinement to GitHub.
+- [ ] Save a new checkpoint after hiding Login and simplifying the mobile Voice log control.
+- [ ] Commit and push the latest UI refinement to GitHub main, then verify local and remote hashes match.
