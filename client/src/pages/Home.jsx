@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useRef, useEffect } from "react";
+import React, { forwardRef, useImperativeHandle, useState, useMemo, useRef, useEffect } from "react";
+import { useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import CalendarWorkspace from "@/components/CalendarWorkspace";
@@ -10,7 +11,7 @@ import {
   Home, HeartPulse, Wallet, Briefcase, GraduationCap, Users, Bell,
   Plus, TrendingUp, TrendingDown, Droplet, Flame, Moon, Dumbbell, Scale,
   Target, AlertTriangle, Check, Trash2, Pencil, ChevronRight, ChevronLeft, ChevronDown, Gauge, Calendar, RefreshCw, MapPin, Pill, ListTodo,
-  Mic, Square, Sparkles, X, BookOpen, MessageCircle
+  Mic, Pause, Square, Sparkles, X, BookOpen, MessageCircle
 } from "lucide-react";
 import {
   AreaChart, Area, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -176,6 +177,100 @@ function SectionCard({ title, right, children }) {
   );
 }
 
+function GeorgetownCoursePage({
+  course,
+  items,
+  openItems,
+  doneCount,
+  performance,
+  average,
+  courseDraft,
+  setCourseDraft,
+  performanceDraft,
+  setPerformanceDraft,
+  onCycleItem,
+  onDeleteItem,
+  onAddItem,
+  onAddPerformance,
+  onDeletePerformance,
+  onBack,
+}) {
+  if (!course) return null;
+  return (
+    <div className="flex flex-col gap-5">
+      <button type="button" onClick={onBack} className="group inline-flex w-fit items-center gap-2 rounded-full bg-white px-3.5 py-2 text-xs font-semibold text-neutral-600 ring-1 ring-neutral-950/8 transition-[transform,background-color,color] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-x-0.5 hover:bg-neutral-950 hover:text-white">
+        <ChevronLeft size={14} /> Back to Georgetown
+      </button>
+
+      <section className="dashboard-card overflow-hidden rounded-[1.5rem] bg-white">
+        <div className="bg-neutral-950 p-5 text-white sm:p-7">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-lime-300">Georgetown · Fall 2026</p>
+              <h2 className="mt-2 max-w-2xl text-2xl font-semibold tracking-[-0.03em] sm:text-3xl">{course.name}</h2>
+              <p className="mt-2 text-sm text-white/60">{course.professor || "Professor not added yet"}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+              <div className="rounded-2xl bg-white/10 px-3.5 py-3"><p className="text-[10px] uppercase tracking-[0.12em] text-white/45">Open</p><p className="mt-1 text-lg font-semibold text-lime-300">{openItems.length}</p></div>
+              <div className="rounded-2xl bg-white/10 px-3.5 py-3"><p className="text-[10px] uppercase tracking-[0.12em] text-white/45">Complete</p><p className="mt-1 text-lg font-semibold">{doneCount}</p></div>
+              <div className="rounded-2xl bg-white/10 px-3.5 py-3"><p className="text-[10px] uppercase tracking-[0.12em] text-white/45">Average</p><p className="mt-1 text-lg font-semibold">{average === null ? "—" : `${average}%`}</p></div>
+            </div>
+          </div>
+          <div className="mt-6 grid gap-2 border-t border-white/10 pt-4 text-xs text-white/65 sm:grid-cols-2 lg:grid-cols-3">
+            <span className="inline-flex items-center gap-2"><Calendar size={13} className="text-lime-300" />{course.meetingDays} · {formatCourseTime(course.startTime)}–{formatCourseTime(course.endTime)}</span>
+            <span className="inline-flex items-center gap-2"><MapPin size={13} className="text-lime-300" />Room {course.room || "—"}</span>
+            <span className="inline-flex items-center gap-2"><RefreshCw size={13} className="text-lime-300" />Weekly · {formatCourseDate(course.startDate)}–{formatCourseDate(course.endDate)}</span>
+          </div>
+        </div>
+
+        <div className="grid gap-5 p-4 sm:p-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]">
+          <section className="rounded-[1.25rem] bg-neutral-50 p-4 sm:p-5" aria-labelledby="course-followups-title">
+            <div className="flex items-start justify-between gap-3">
+              <div><p id="course-followups-title" className="text-sm font-semibold text-neutral-900">Course follow-ups</p><p className="mt-1 max-w-xl text-xs leading-5 text-neutral-500">Assignments, quizzes, exams, readings, study sessions, and the next action you need to remember.</p></div>
+              <span className="shrink-0 rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-semibold text-violet-700">{openItems.length} open</span>
+            </div>
+            {items.length ? (
+              <div className="mt-4 flex flex-col gap-2">
+                {items.map((item) => (
+                  <div key={item.id} className="flex items-start gap-2 rounded-xl bg-white p-3 ring-1 ring-neutral-950/5">
+                    <button type="button" onClick={() => onCycleItem(item.id)} className="min-w-0 flex-1 text-left" aria-label={`Cycle status for ${item.title}`}>
+                      <div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-neutral-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{item.type}</span><StatusPill status={item.status} /></div>
+                      <p className={`mt-2 text-sm font-medium ${item.status === "Done" ? "text-neutral-400 line-through" : "text-neutral-800"}`}>{item.title}</p>
+                      <p className="mt-1 text-xs text-neutral-400">{item.date ? formatCourseDate(item.date) : "No date"}{item.time ? ` · ${formatCourseTime(item.time)}` : ""}{item.notes ? ` · ${item.notes}` : ""}</p>
+                    </button>
+                    <button type="button" onClick={() => onDeleteItem(item.id)} aria-label={`Delete ${item.title}`} className="rounded-full p-1.5 text-neutral-300 transition-colors duration-300 hover:bg-rose-50 hover:text-rose-500"><Trash2 size={14} /></button>
+                  </div>
+                ))}
+              </div>
+            ) : <p className="mt-4 rounded-xl bg-white p-4 text-xs leading-5 text-neutral-500 ring-1 ring-neutral-950/5">No course follow-ups yet. Add the first deadline or study block below.</p>}
+            <form onSubmit={(event) => { event.preventDefault(); onAddItem(); }} className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <select aria-label="Follow-up type" value={courseDraft.type} onChange={(event) => setCourseDraft({ ...courseDraft, type: event.target.value })} className="rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-700"><option>Assignment</option><option>Quiz</option><option>Exam</option><option>Study session</option><option>Reading</option><option>Follow-up</option></select>
+              <input aria-label="Follow-up title" value={courseDraft.title} onChange={(event) => setCourseDraft({ ...courseDraft, title: event.target.value })} placeholder="What needs follow-up?" className="rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-800" />
+              <input aria-label="Follow-up date" type="date" value={courseDraft.date} onChange={(event) => setCourseDraft({ ...courseDraft, date: event.target.value })} className="rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-700" />
+              <input aria-label="Follow-up time" type="time" value={courseDraft.time} onChange={(event) => setCourseDraft({ ...courseDraft, time: event.target.value })} className="rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-700" />
+              <input aria-label="Follow-up notes" value={courseDraft.notes} onChange={(event) => setCourseDraft({ ...courseDraft, notes: event.target.value })} placeholder="Notes or next action" className="rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-800 sm:col-span-2" />
+              <div className="flex justify-end sm:col-span-2"><button type="submit" className="inline-flex items-center gap-1.5 rounded-full bg-lime-400 px-4 py-2.5 text-xs font-semibold text-neutral-950 transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-y-0.5 active:scale-[0.98]"><Plus size={14} /> Add follow-up</button></div>
+            </form>
+          </section>
+
+          <section className="rounded-[1.25rem] bg-[#f7f3ed] p-4 sm:p-5" aria-labelledby="course-performance-title">
+            <div className="flex items-start justify-between gap-3"><div><p id="course-performance-title" className="text-sm font-semibold text-neutral-900">Performance log</p><p className="mt-1 text-xs leading-5 text-neutral-500">Keep results and reflections together by course.</p></div><span className="text-lg font-semibold text-neutral-950">{average === null ? "—" : `${average}%`}</span></div>
+            {performance.length ? <div className="mt-4 flex flex-col gap-2">{performance.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2.5 ring-1 ring-neutral-950/5"><div className="min-w-0"><p className="truncate text-xs font-medium text-neutral-800">{item.title}</p><p className="mt-1 text-[11px] text-neutral-400">{item.date ? formatCourseDate(item.date) : "No date"}{item.notes ? ` · ${item.notes}` : ""}</p></div><div className="flex items-center gap-2"><span className="text-xs font-semibold text-neutral-700">{item.score}/{item.outOf}</span><button type="button" onClick={() => onDeletePerformance(item.id)} aria-label={`Delete ${item.title} result`} className="rounded-full p-1 text-neutral-300 hover:bg-rose-50 hover:text-rose-500"><Trash2 size={13} /></button></div></div>)}</div> : <p className="mt-4 rounded-xl bg-white p-4 text-xs leading-5 text-neutral-500 ring-1 ring-neutral-950/5">No results logged yet. Add quiz, exam, or assignment results as they come in.</p>}
+            <form onSubmit={(event) => { event.preventDefault(); onAddPerformance(); }} className="mt-4 grid grid-cols-2 gap-2">
+              <input aria-label="Result name" value={performanceDraft.title} onChange={(event) => setPerformanceDraft({ ...performanceDraft, title: event.target.value })} placeholder="Result name" className="col-span-2 rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-800" />
+              <input aria-label="Score" type="number" min="0" value={performanceDraft.score} onChange={(event) => setPerformanceDraft({ ...performanceDraft, score: event.target.value })} placeholder="Score" className="rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-800" />
+              <input aria-label="Out of" type="number" min="1" value={performanceDraft.outOf} onChange={(event) => setPerformanceDraft({ ...performanceDraft, outOf: event.target.value })} placeholder="Out of" className="rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-800" />
+              <input aria-label="Result date" type="date" value={performanceDraft.date} onChange={(event) => setPerformanceDraft({ ...performanceDraft, date: event.target.value })} className="col-span-2 rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-700" />
+              <input aria-label="Performance reflection" value={performanceDraft.notes} onChange={(event) => setPerformanceDraft({ ...performanceDraft, notes: event.target.value })} placeholder="Reflection (optional)" className="col-span-2 rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-800" />
+              <div className="col-span-2 flex justify-end"><button type="submit" className="inline-flex items-center gap-1.5 rounded-full bg-neutral-950 px-4 py-2.5 text-xs font-semibold text-white transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-y-0.5 active:scale-[0.98]"><Plus size={14} /> Log result</button></div>
+            </form>
+          </section>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function IdeaButton({ onClick, loading = false }) {
   return <button type="button" onClick={onClick} disabled={loading} className="inline-flex items-center gap-1 rounded-lg bg-neutral-100 px-2.5 py-1.5 text-[11px] font-medium text-neutral-600 transition-transform duration-150 active:scale-[0.97] disabled:opacity-50"><Sparkles size={12} />{loading ? "Thinking…" : "Ideas"}</button>;
 }
@@ -266,7 +361,7 @@ function AIListeningAnimation({ active, processing, elapsed }) {
   );
 }
 
-export function VoiceNoteBox({ onSubmit, loading, placeholder }) {
+export const VoiceNoteBox = forwardRef(function VoiceNoteBox({ onSubmit, loading, placeholder, onRecordingChange }, ref) {
   const [text, setText] = useState("");
   const [recording, setRecording] = useState(false);
   const [supported, setSupported] = useState(true);
@@ -317,6 +412,7 @@ export function VoiceNoteBox({ onSubmit, loading, placeholder }) {
   function setRecordingState(value) {
     recordingRef.current = value;
     setRecording(value);
+    onRecordingChange?.(value);
   }
 
   function startSpeechRecognition() {
@@ -388,6 +484,15 @@ export function VoiceNoteBox({ onSubmit, loading, placeholder }) {
       setRecordingState(false);
     }
   }
+
+  useImperativeHandle(ref, () => ({
+    startRecording,
+    stopRecording,
+    toggleRecording: () => {
+      if (recordingRef.current) stopRecording();
+      else void startRecording();
+    },
+  }), [recording]);
 
   async function finishRecording(contentType) {
     setRecordingState(false);
@@ -496,9 +601,9 @@ export function VoiceNoteBox({ onSubmit, loading, placeholder }) {
       </div>
     </div>
   );
-}
+});
 
-function MobileDock({ items, active, onChange, onVoice }) {
+function MobileDock({ items, active, onChange, onVoice, voiceRecording }) {
   const activeIndex = Math.max(0, items.findIndex((i) => i.key === active));
   const leftPct = ((activeIndex + 0.5) / items.length) * 100;
   const ActiveIcon = items[activeIndex]?.icon;
@@ -511,7 +616,19 @@ function MobileDock({ items, active, onChange, onVoice }) {
         .dock-pop-inner { animation: dockPopScale .42s cubic-bezier(.32,.72,0,1); }
         @media (prefers-reduced-motion: reduce) { .dock-pop-inner { animation: none; } }
       `}</style>
-      {onVoice && <button type="button" className="mobile-voice-cta !h-14 !w-14 !max-w-none !rounded-full !justify-center !p-0" onClick={onVoice} aria-label="Open voice log"><Mic size={21} /></button>}
+
+      {onVoice && (
+        <button
+          type="button"
+          className={`mobile-voice-fab ${voiceRecording ? "is-recording" : ""}`}
+          onClick={onVoice}
+          aria-label={voiceRecording ? "Pause voice recording" : "Tap to speak"}
+          aria-pressed={voiceRecording}
+        >
+          <span className="mobile-voice-fab-icon" aria-hidden="true">{voiceRecording ? <Pause size={20} strokeWidth={2.3} /> : <Mic size={21} strokeWidth={2} />}</span>
+          <span className="sr-only">{voiceRecording ? "Recording. Tap to pause." : "Tap to speak."}</span>
+        </button>
+      )}
       <div className="mobile-dock-bar relative w-full max-w-[360px]" style={{ height: 64 }}>
         <div className="mobile-dock-backdrop absolute inset-0" aria-hidden="true" />
 
@@ -658,6 +775,12 @@ function PersonCard({
 // ---------- app ----------
 
 export default function PersonalLifeOS() {
+  const [location, navigate] = useLocation();
+  const courseRouteId = useMemo(() => {
+    const match = location.match(/^\/school\/georgetown\/([^/?#]+)/);
+    if (!match) return null;
+    try { return decodeURIComponent(match[1]); } catch { return match[1]; }
+  }, [location]);
   const [tab, setTab] = useState(() => {
     if (typeof window === "undefined") return "home";
     const requested = new URLSearchParams(window.location.search).get("tab");
@@ -687,6 +810,9 @@ export default function PersonalLifeOS() {
   const saveSnapshot = trpc.dashboard.save.useMutation();
   const [snapshotReady, setSnapshotReady] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [mobileVoiceRecording, setMobileVoiceRecording] = useState(false);
+  const [startVoiceOnOpen, setStartVoiceOnOpen] = useState(false);
+  const globalVoiceBoxRef = useRef(null);
   const [performanceAdvice, setPerformanceAdvice] = useState("");
   const [coachMessages, setCoachMessages] = useState([]);
   const [coachInput, setCoachInput] = useState("");
@@ -1155,8 +1281,16 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
   const [newClass, setNewClass] = useState({ name: "", professor: "", schedule: "" });
   const [courseItems, setCourseItems] = useState([]);
   const [coursePerformance, setCoursePerformance] = useState([]);
+  const coursePageCourse = courseRouteId ? classes.find((item) => String(item.id) === String(courseRouteId)) || null : null;
   const [courseDraft, setCourseDraft] = useState({ type: "Assignment", title: "", date: "", time: "", notes: "" });
   const [performanceDraft, setPerformanceDraft] = useState({ title: "", score: "", outOf: "100", date: "", notes: "" });
+
+  useEffect(() => {
+    if (!courseRouteId) return;
+    setTab("school");
+    setSchoolSub("Georgetown");
+    if (classes.some((item) => String(item.id) === String(courseRouteId))) setSelectedCourseId(courseRouteId);
+  }, [classes, courseRouteId]);
 
   function addClass() {
     if (!newClass.name) return;
@@ -1226,6 +1360,7 @@ Keep habits to 2-4 short, concrete, temporary actions (e.g. "Drink plenty of wat
   const selectedCourseOpenItems = selectedCourseItems.filter((item) => item.status !== "Done");
   const selectedCourseDoneCount = selectedCourseItems.filter((item) => item.status === "Done").length;
   const selectedCoursePerformance = coursePerformance.filter((item) => selectedCourse && String(item.courseId) === String(selectedCourse.id));
+  const selectedCourseAverage = selectedCoursePerformance.length ? Math.round(selectedCoursePerformance.reduce((sum, item) => sum + (Number(item.score) / Math.max(Number(item.outOf) || 100, 1)) * 100, 0) / selectedCoursePerformance.length) : null;
   const courseSummaries = useMemo(() => classes.map((course) => {
     const items = courseItems.filter((item) => String(item.courseId) === String(course.id));
     const performance = coursePerformance.filter((item) => String(item.courseId) === String(course.id));
@@ -1415,6 +1550,28 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
   const [voiceLoading, setVoiceLoading] = useState(false);
   const [showGlobalVoiceLog, setShowGlobalVoiceLog] = useState(false);
   const [voiceConfirmation, setVoiceConfirmation] = useState(null);
+
+  useEffect(() => {
+    if (!showGlobalVoiceLog || !startVoiceOnOpen || !globalVoiceBoxRef.current) return;
+    setStartVoiceOnOpen(false);
+    void globalVoiceBoxRef.current.startRecording();
+  }, [showGlobalVoiceLog, startVoiceOnOpen]);
+
+  function openMobileVoice() {
+    if (globalVoiceBoxRef.current) {
+      globalVoiceBoxRef.current.toggleRecording();
+      return;
+    }
+    setShowGlobalVoiceLog(true);
+    setStartVoiceOnOpen(true);
+  }
+
+  function closeGlobalVoiceLog() {
+    globalVoiceBoxRef.current?.stopRecording?.();
+    setMobileVoiceRecording(false);
+    setStartVoiceOnOpen(false);
+    setShowGlobalVoiceLog(false);
+  }
 
   function applyAIActions(actions) {
     let next = { todos, projects, debts, income, workouts, liftLog, weight, sleep, conditionLog, diseases, diseaseArchive, healthSchedules };
@@ -1608,10 +1765,10 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
                 <h2 id="global-voice-log-title" className="text-xl font-semibold tracking-tight text-neutral-950">Tell your dashboard what changed.</h2>
                 <p className="text-sm text-neutral-500 mt-1">I’ll analyse this note in the context of {tab === "home" ? homeSub : domainMeta[tab]?.label || tab}{tab === "home" ? "" : ` · ${tab === "health" ? healthSub : tab === "finance" ? financeSub : tab === "school" ? schoolSub : tab === "relationships" ? relationshipsSub : tab === "work" ? currentProject?.name || "Projects" : "Today"}`}, then update the relevant records.</p>
               </div>
-              <button type="button" aria-label="Close voice log" onClick={() => setShowGlobalVoiceLog(false)} className="dashboard-action w-9 h-9 rounded-full bg-neutral-100 text-neutral-500 flex items-center justify-center"><X size={16} /></button>
+              <button type="button" aria-label="Close voice log" onClick={closeGlobalVoiceLog} className="dashboard-action w-9 h-9 rounded-full bg-neutral-100 text-neutral-500 flex items-center justify-center"><X size={16} /></button>
             </div>
             <div className="mt-5 rounded-[1.2rem] border border-neutral-100 bg-neutral-50/70 p-4">
-              <VoiceNoteBox onSubmit={async (value, attachment) => { const processed = await processVoiceNote(value, attachment); if (processed) setShowGlobalVoiceLog(false); return processed; }} loading={voiceLoading} placeholder="Say what happened, what needs doing, or what should be updated…" />
+              <VoiceNoteBox ref={globalVoiceBoxRef} onRecordingChange={setMobileVoiceRecording} onSubmit={async (value, attachment) => { const processed = await processVoiceNote(value, attachment); if (processed) { setMobileVoiceRecording(false); setShowGlobalVoiceLog(false); } return processed; }} loading={voiceLoading} placeholder="Say what happened, what needs doing, or what should be updated…" />
             </div>
             <p className="mt-3 text-xs text-neutral-400">Examples: “Mark my gym session complete”, “Add a task to submit my Masters transcript”, or “I paid Nicole RWF 50,000.”</p>
           </div>
@@ -1663,7 +1820,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
       </nav>
 
       {/* dock — mobile only */}
-      <MobileDock items={navItems} active={tab} onChange={setTab} onVoice={() => setShowGlobalVoiceLog(true)} />
+      <MobileDock items={navItems} active={tab} onChange={setTab} onVoice={openMobileVoice} voiceRecording={mobileVoiceRecording} />
 
       {/* main */}
       <main id="main-content" className="dashboard-main flex-1 md:ml-20 p-4 md:p-6 overflow-y-auto pb-28 md:pb-6 min-w-0">
@@ -2324,6 +2481,27 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
 
             {schoolSub === "Georgetown" && (
               <>
+                {coursePageCourse ? (
+                  <GeorgetownCoursePage
+                    course={coursePageCourse}
+                    items={selectedCourseItems}
+                    openItems={selectedCourseOpenItems}
+                    doneCount={selectedCourseDoneCount}
+                    performance={selectedCoursePerformance}
+                    average={selectedCourseAverage}
+                    courseDraft={courseDraft}
+                    setCourseDraft={setCourseDraft}
+                    performanceDraft={performanceDraft}
+                    setPerformanceDraft={setPerformanceDraft}
+                    onCycleItem={cycleCourseItemStatus}
+                    onDeleteItem={deleteCourseItem}
+                    onAddItem={addCourseItem}
+                    onAddPerformance={addCoursePerformance}
+                    onDeletePerformance={deleteCoursePerformance}
+                    onBack={() => { setSelectedCourseId(coursePageCourse.id); navigate("/?tab=school"); setTab("school"); setSchoolSub("Georgetown"); }}
+                  />
+                ) : (
+                <>
                 <SectionCard title="My Classes" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "My Classes"} onClick={() => askIdeas("My Classes", JSON.stringify({ classes, courseItems, coursePerformance, schoolSub }))} />}>
                   <div className="mb-5 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                     <div>
@@ -2336,7 +2514,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
                     {courseSummaries.map((course) => {
                       const selected = String(selectedCourseId) === String(course.id);
                       return (
-                        <button type="button" key={course.id} onClick={() => setSelectedCourseId(course.id)} aria-pressed={selected} className={`group rounded-2xl p-4 text-left transition-[transform,background-color,box-shadow] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${selected ? "bg-neutral-950 text-white shadow-[0_18px_35px_rgba(23,23,23,0.16)]" : "bg-neutral-50 text-neutral-900 hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_16px_32px_rgba(53,64,37,0.08)]"}`}>
+                        <button type="button" key={course.id} onClick={() => { setSelectedCourseId(course.id); navigate(`/school/georgetown/${encodeURIComponent(course.id)}`); }} aria-pressed={selected} className={`group rounded-2xl p-4 text-left transition-[transform,background-color,box-shadow] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${selected ? "bg-neutral-950 text-white shadow-[0_18px_35px_rgba(23,23,23,0.16)]" : "bg-neutral-50 text-neutral-900 hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_16px_32px_rgba(53,64,37,0.08)]"}`}>
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex min-w-0 items-start gap-3">
                               <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${selected ? "bg-lime-400 text-neutral-950" : "bg-violet-100 text-violet-700"}`}><BookOpen size={15} strokeWidth={1.8} /></span>
@@ -2497,6 +2675,8 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
                     <button onClick={addSyllabusEvent} className="px-4 py-2 bg-lime-400 text-neutral-950 text-sm font-medium rounded-lg flex items-center justify-center gap-1"><Plus size={14} /> Add</button>
                   </div>
                 </SectionCard>
+                </>
+                )}
               </>
             )}
 
@@ -2617,13 +2797,13 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
               </>
             )}
 
-            <div className="flex gap-4 flex-wrap">
+            {!coursePageCourse && <div className="flex gap-4 flex-wrap">
               {Object.entries(gradedByCourse).map(([course, grades]) => (
                 <StatCard key={course} icon={GraduationCap} iconColor="violet" label={course} value={grades[grades.length - 1]} />
               ))}
-            </div>
+            </div>}
 
-            <SectionCard title="Assignments" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Assignments"} onClick={() => askIdeas("Assignments", JSON.stringify({ assignments, schoolSub }))} />}>
+            {!coursePageCourse && <SectionCard title="Assignments" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Assignments"} onClick={() => askIdeas("Assignments", JSON.stringify({ assignments, schoolSub }))} />}>
               <div className="overflow-x-auto">
               <table className="w-full min-w-[480px] text-sm">
                 <thead>
@@ -2654,9 +2834,9 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
                 <input type="date" value={newAssignment.due} onChange={(e) => setNewAssignment({ ...newAssignment, due: e.target.value })} className="text-sm border border-neutral-200 rounded-lg px-3 py-2" />
                 <button onClick={addAssignment} className="px-4 py-2 bg-lime-400 text-neutral-950 text-sm font-medium rounded-lg flex items-center justify-center gap-1"><Plus size={14} /> Add</button>
               </div>
-            </SectionCard>
+            </SectionCard>}
 
-            <SectionCard title="Readings" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Readings"} onClick={() => askIdeas("Readings", JSON.stringify({ readings, schoolSub }))} />}>
+            {!coursePageCourse && <SectionCard title="Readings" right={<IdeaButton loading={ideasMutation.isPending && ideaResult?.section === "Readings"} onClick={() => askIdeas("Readings", JSON.stringify({ readings, schoolSub }))} />}>
               <div className="flex flex-col">
                 {schoolReadings.map((r) => (
                   <div key={r.id} className="flex items-center justify-between py-2.5 border-b border-neutral-100 last:border-0">
@@ -2678,7 +2858,7 @@ Keep each point to one short, warm, specific sentence or question. Ground them i
                 <input placeholder="Course" value={newReading.course} onChange={(e) => setNewReading({ ...newReading, course: e.target.value })} className="sm:w-32 text-sm border border-neutral-200 rounded-lg px-3 py-2" />
                 <button onClick={addReading} className="px-4 py-2 bg-lime-400 text-neutral-950 text-sm font-medium rounded-lg flex items-center justify-center gap-1"><Plus size={14} /> Add</button>
               </div>
-            </SectionCard>
+            </SectionCard>}
           </div>
         )}
 

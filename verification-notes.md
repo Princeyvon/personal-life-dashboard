@@ -17,3 +17,10 @@ The live calendar view now derives recurring Georgetown class meetings from the 
 ## Georgetown workspace UI verification — 2026-08-31
 
 The live School workspace renders all five requested course cards with the exact meeting patterns, times, and rooms. The selected-course panel shows the Academic follow-ups and Performance areas with accessible empty states and forms for adding assignments, quizzes, exams, study sessions, readings, follow-ups, grades, scores, dates, and notes. The course cards use a dark selected state, violet course signal, lime accent, and responsive two-column-to-single-column layout. The school nudge count now includes open Georgetown course follow-ups.
+
+## Voice FAB + dedicated Georgetown course page — 2026-09-03
+- `/school/georgetown/gt-islamic-world-history` resolves directly and renders the dedicated Islamic World History workspace with schedule, room, semester range, course follow-ups, and performance log.
+- Unrelated school-wide assignment and reading sections are hidden on the dedicated course route; Back to Georgetown returns to the course catalog.
+- Narrow 390x844 capture shows the mobile voice action as a compact black circular button at bottom-right above the dock, with safe-area spacing and the existing navigation bar preserved.
+- The idle voice action uses the microphone logo; the active state is wired to turn red and swap to the pause icon while recording.
+- `pnpm check`, `pnpm build`, and `git diff --check` passed. Full Vitest suite passed with explicit local test secrets: 42 passed, 1 skipped; PIN-only path passed 6 tests with `DASHBOARD_FREE_ACCESS=false`.
